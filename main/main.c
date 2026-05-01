@@ -11,7 +11,6 @@
 #include "bsp/display.h"
 #include "bsp_board_extra.h"
 #include "ui/ui.h"
-// #include "lv_demos.h"
 
 void app_main(void)
 {
@@ -28,12 +27,6 @@ void app_main(void)
     bsp_display_backlight_on();
 
     bsp_display_lock(-1);
-
-    // lv_demo_music();
-    // lv_demo_benchmark();
-    // lv_demo_widgets();
-    
     ui_init();
-
     bsp_display_unlock();
 }

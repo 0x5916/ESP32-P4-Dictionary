@@ -5,9 +5,9 @@ idf_component_register(
     SRCS
         main.c
         ui/ui.c
-        ui/screens.c
         ui/styles.c
         ui/images.c
+        ui/screens.c
         ${LV_DEMOS_SOURCES}
     INCLUDE_DIRS . "ui" ${LV_DEMO_DIR})
 

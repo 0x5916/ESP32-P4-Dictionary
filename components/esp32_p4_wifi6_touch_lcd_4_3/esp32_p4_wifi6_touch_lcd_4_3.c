@@ -123,6 +123,7 @@ esp_err_t bsp_i2c_init(void)
         .sda_io_num = BSP_I2C_SDA,
         .scl_io_num = BSP_I2C_SCL,
         .i2c_port = BSP_I2C_NUM,
+        .flags.enable_internal_pullup = true,
     };
     BSP_ERROR_CHECK_RETURN_ERR(i2c_new_master_bus(&i2c_bus_conf, &i2c_handle));
 
@@ -618,7 +619,16 @@ esp_err_t bsp_touch_new(const bsp_display_cfg_t *cfg, esp_lcd_touch_handle_t *re
     }
     tp_io_config.scl_speed_hz = CONFIG_BSP_I2C_CLK_SPEED_HZ;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(i2c_handle, &tp_io_config, &tp_io_handle), TAG, "");
-    return esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, ret_touch);
+
+    vTaskDelay(pdMS_TO_TICKS(120));
+    esp_err_t touch_ret = ESP_FAIL;
+    for (int retry = 0; retry < 5; retry++) {
+        touch_ret = esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, ret_touch);
+        if (touch_ret == ESP_OK) break;
+        ESP_LOGW(TAG, "GT911 init attempt %d/5 failed, retrying...", retry + 1);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    return touch_ret;
 }
 
 static lv_display_t *bsp_display_lcd_init(const bsp_display_cfg_t *cfg)
