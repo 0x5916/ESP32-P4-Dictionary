@@ -1,0 +1,90 @@
+# .gitignore for ESP32 P4 Dictionary (ESP-IDF) project
+# Generated to ignore build artifacts, IDE settings, and temporary files
+
+# ESP-IDF / CMake build outputs
+build/
+build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+project_description.json
+rules.ninja
+*.ninja
+
+# SDK config (generated)
+sdkconfig
+sdkconfig.cmake
+sdkconfig.h
+sdkconfig.json
+
+# Partition/flash/IDF tool generated files
+flasher_args.json
+flash_args
+flash_args.in
+flash_*_args
+config.env
+
+# Firmware/artifacts
+*.elf
+*.bin
+*.hex
+*.map
+*.tbf
+
+# Component/build folders
+**/build/
+
+# Managed components
+managed_components/
+
+# IDEs and editors
+.vscode/
+.vscode/*
+.idea/
+*.code-workspace
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+pip-wheel-metadata/
+*.egg-info/
+
+# PlatformIO
+.pio/
+.pioenvs/
+
+# Temporary files
+*.log
+*.tmp
+*.cache
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local environment files
+.env
+.env.*
+
+# Certificates / keys
+*.pem
+*.key
+
+# C/C++ build artifacts
+*.o
+*.a
+*.so
+*.d
+*.lst
+*.sym
+
+# Misc
+.vscode-test/
+
+# Keep these in repo: sdkconfig.defaults, partitions.csv
