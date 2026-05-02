@@ -4,6 +4,10 @@ file(GLOB_RECURSE LV_DEMOS_SOURCES ${LV_DEMO_DIR}/*.c)
 idf_component_register(
     SRCS
         main.c
+        ui_overlays.c
+        ui_events.c
+        screen_manager.c
+        custom_keyboard.c
         ui/ui.c
         ui/styles.c
         ui/images.c

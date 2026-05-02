@@ -17,6 +17,9 @@ enum ScreensEnum {
 
 typedef struct _objects_t {
     lv_obj_t *main;
+    lv_obj_t *ta_search;
+    lv_obj_t *lst_headword;
+    lv_obj_t *kb_search;
 } objects_t;
 
 extern objects_t objects;

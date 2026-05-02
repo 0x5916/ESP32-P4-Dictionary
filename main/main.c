@@ -11,6 +11,8 @@
 #include "bsp/display.h"
 #include "bsp_board_extra.h"
 #include "ui/ui.h"
+#include "ui_overlays.h"
+#include "ui_events.h"
 
 void app_main(void)
 {
@@ -28,5 +30,7 @@ void app_main(void)
 
     bsp_display_lock(-1);
     ui_init();
+    ui_overlays_init();
+    ui_events_init();
     bsp_display_unlock();
 }

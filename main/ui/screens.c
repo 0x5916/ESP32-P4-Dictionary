@@ -27,13 +27,39 @@ void create_screen_main() {
     objects.main = obj;
     lv_obj_set_pos(obj, 0, 0);
     lv_obj_set_size(obj, 480, 800);
+    lv_obj_set_style_pad_top(obj, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
     {
         lv_obj_t *parent_obj = obj;
         {
-            lv_obj_t *obj = lv_label_create(parent_obj);
-            lv_obj_set_pos(obj, 196, 392);
-            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-            lv_label_set_text_static(obj, "Hello, world!");
+            // ta_search
+            lv_obj_t *obj = lv_textarea_create(parent_obj);
+            objects.ta_search = obj;
+            lv_obj_set_pos(obj, 13, 10);
+            lv_obj_set_size(obj, 455, 55);
+            lv_textarea_set_max_length(obj, 64);
+            lv_textarea_set_placeholder_text(obj, "Search your word here...");
+            lv_textarea_set_one_line(obj, true);
+            lv_textarea_set_password_mode(obj, false);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_height(obj, 55, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            // lst_headword
+            lv_obj_t *obj = lv_list_create(parent_obj);
+            objects.lst_headword = obj;
+            lv_obj_set_pos(obj, 13, 75);
+            lv_obj_set_size(obj, 455, 665);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            // kb_search
+            lv_obj_t *obj = lv_keyboard_create(parent_obj);
+            objects.kb_search = obj;
+            lv_obj_set_pos(obj, 0, 440);
+            lv_obj_set_size(obj, 480, 310);
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_align(obj, LV_ALIGN_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }
     
