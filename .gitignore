@@ -87,4 +87,7 @@ desktop.ini
 # Misc
 .vscode-test/
 
+# EZZ Studio caches
+*.eez-project-ui-state
+
 # Keep these in repo: sdkconfig.defaults, partitions.csv
