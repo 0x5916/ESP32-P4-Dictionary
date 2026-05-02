@@ -653,9 +653,9 @@
               "objID": "afe54ed0-643a-4257-eb83-4812c6a210fe",
               "type": "LVGLKeyboardWidget",
               "left": 0,
-              "top": 440,
+              "top": 0,
               "width": 480,
-              "height": 310,
+              "height": 325,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -689,7 +689,7 @@
                 "definition": {
                   "MAIN": {
                     "DEFAULT": {
-                      "align": "DEFAULT",
+                      "align": "BOTTOM_LEFT",
                       "text_font": "MONTSERRAT_22"
                     }
                   }
@@ -726,9 +726,9 @@
                   "objID": "ba5f26e3-8d69-41ef-b360-a6a2973efe80",
                   "type": "LVGLButtonWidget",
                   "left": 13,
-                  "top": 0,
-                  "width": 50,
-                  "height": 50,
+                  "top": 3,
+                  "width": 45,
+                  "height": 45,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -793,7 +793,8 @@
                       "text": "<",
                       "textType": "literal",
                       "longMode": "WRAP",
-                      "recolor": false
+                      "recolor": false,
+                      "previewValue": ""
                     }
                   ],
                   "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_ON_FOCUS|SCROLL_WITH_ARROW|SNAPPABLE",

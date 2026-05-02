@@ -10,5 +10,5 @@ void screen_navigate(lv_obj_t * screen, screen_anim_t anim) {
         case SCREEN_ANIM_FADE:  lv_anim = LV_SCR_LOAD_ANIM_FADE_IN;    break;
         default:                lv_anim = LV_SCR_LOAD_ANIM_NONE;       break;
     }
-    lv_screen_load_anim(screen, lv_anim, 200, 0, false);
+    lv_screen_load_anim(screen, lv_anim, 120, 0, false);
 }
