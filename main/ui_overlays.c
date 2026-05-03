@@ -15,31 +15,31 @@ static lv_obj_t *wifi_label;
 
 static void hide_search_keyboard(void)
 {
-    if (!objects.kb_search) {
+    if (!objects.search_kb) {
         return;
     }
 
-    lv_obj_t *textarea = lv_keyboard_get_textarea(objects.kb_search);
+    lv_obj_t *textarea = lv_keyboard_get_textarea(objects.search_kb);
     if (textarea) {
         lv_obj_clear_state(textarea, LV_STATE_FOCUSED);
         lv_obj_clear_state(textarea, LV_STATE_CHECKED);
         lv_obj_clear_flag(textarea, LV_OBJ_FLAG_STATE_TRICKLE);
     }
 
-    lv_keyboard_set_textarea(objects.kb_search, NULL);
-    lv_obj_add_flag(objects.kb_search, LV_OBJ_FLAG_HIDDEN);
+    lv_keyboard_set_textarea(objects.search_kb, NULL);
+    lv_obj_add_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void show_search_keyboard(lv_obj_t *textarea)
 {
-    if (!objects.kb_search || !textarea) {
+    if (!objects.search_kb || !textarea) {
         return;
     }
 
     lv_obj_add_state(textarea, LV_STATE_FOCUSED);
-    lv_keyboard_set_textarea(objects.kb_search, textarea);
-    lv_obj_clear_flag(objects.kb_search, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(objects.kb_search);
+    lv_keyboard_set_textarea(objects.search_kb, textarea);
+    lv_obj_clear_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(objects.search_kb);
 }
 
 static void keyboard_event_cb(lv_event_t *event)
@@ -61,14 +61,19 @@ static void textarea_focus_cb(lv_event_t *event)
     show_search_keyboard(textarea);
 }
 
-static void search_launcher_cb(lv_event_t *event)
+static void navigate_to_screen_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED || !objects.search || !objects.ta_search) {
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
         return;
     }
 
-    screen_navigate(objects.search, SCREEN_ANIM_LEFT);
-    show_search_keyboard(objects.ta_search);
+    lv_obj_t *target_screen = (lv_obj_t *)lv_event_get_user_data(event);
+    if (!target_screen) {
+        ESP_LOGW(TAG, "navigate_to_screen_cb: target screen is NULL");
+        return;
+    }
+
+    screen_navigate(target_screen, SCREEN_ANIM_LEFT);
 }
 
 static void search_back_cb(lv_event_t *event)
@@ -115,15 +120,15 @@ static void create_status_bar(void)
 
 static void create_keyboard(void)
 {
-    if (!objects.kb_search) {
+    if (!objects.search_kb) {
         ESP_LOGW(TAG, "Generated keyboard object is missing");
         return;
     }
 
-    apply_custom_keyboard_layout(objects.kb_search);
-    lv_obj_add_event_cb(objects.kb_search, keyboard_event_cb, LV_EVENT_READY, NULL);
-    lv_obj_add_event_cb(objects.kb_search, keyboard_event_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_move_background(objects.kb_search);
+    apply_custom_keyboard_layout(objects.search_kb);
+    lv_obj_add_event_cb(objects.search_kb, keyboard_event_cb, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(objects.search_kb, keyboard_event_cb, LV_EVENT_CANCEL, NULL);
+    lv_obj_move_background(objects.search_kb);
 }
 
 void ui_overlays_init(void)
@@ -140,15 +145,6 @@ void ui_overlays_bind_textarea(lv_obj_t *textarea)
 
     lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_FOCUSED, NULL);
     lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_CLICKED, NULL);
-}
-
-void ui_overlays_bind_search_launcher(lv_obj_t *launcher)
-{
-    if (!launcher) {
-        return;
-    }
-
-    lv_obj_add_event_cb(launcher, search_launcher_cb, LV_EVENT_CLICKED, NULL);
 }
 
 void ui_overlays_bind_search_back_button(lv_obj_t *button)
@@ -172,4 +168,13 @@ void ui_overlays_set_wifi_text(const char *text)
     if (wifi_label && text) {
         lv_label_set_text(wifi_label, text);
     }
+}
+
+void ui_overlays_bind_navigation_button(lv_obj_t *button, lv_obj_t *target_screen)
+{
+    if (!button || !target_screen) {
+        return;
+    }
+
+    lv_obj_add_event_cb(button, navigate_to_screen_cb, LV_EVENT_CLICKED, target_screen);
 }

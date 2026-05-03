@@ -17,6 +17,7 @@ sdkconfig
 sdkconfig.cmake
 sdkconfig.h
 sdkconfig.json
+sdkconfig.old
 
 # Partition/flash/IDF tool generated files
 flasher_args.json

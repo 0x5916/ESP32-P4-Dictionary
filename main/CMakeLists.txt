@@ -10,12 +10,10 @@ idf_component_register(
 
         screen_manager.c
         custom_keyboard.c
-        
-        dictionary_state.c
+
         storage/sd_card.c
-        dictionary/dict_manager.c
-        dictionary/dict_parser.c
-        dictionary/dict_search.c
+        dictionary/dict_lookup.c
+        dictionary/dict_spellcheck.c
 
         ui/ui.c
         ui/styles.c
