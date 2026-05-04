@@ -1,6 +1,3 @@
-set(LV_DEMO_DIR ../managed_components/lvgl__lvgl/demos)
-file(GLOB_RECURSE LV_DEMOS_SOURCES ${LV_DEMO_DIR}/*.c)
-
 idf_component_register(
     SRCS
         main.c
@@ -10,22 +7,23 @@ idf_component_register(
 
         screen_manager.c
         custom_keyboard.c
+        clock_service.c
 
+        dict_lookup.c
+        dict_spellcheck.c
+
+        wifi_service.c
         storage/sd_card.c
-        dictionary/dict_lookup.c
-        dictionary/dict_spellcheck.c
 
         ui/ui.c
         ui/styles.c
         ui/images.c
         ui/screens.c
-        ${LV_DEMOS_SOURCES}
-    INCLUDE_DIRS . "ui" ${LV_DEMO_DIR})
+    INCLUDE_DIRS . "ui")
 
 idf_component_get_property(LVGL_LIB lvgl__lvgl COMPONENT_LIB)
 target_compile_options(
     ${LVGL_LIB} 
     PRIVATE
         -DLV_LVGL_H_INCLUDE_SIMPLE
-        -DLV_USE_DEMO_MUSIC
 )

@@ -84,11 +84,15 @@ desktop.ini
 *.d
 *.lst
 *.sym
+*.clangd
 
 # Misc
 .vscode-test/
 
 # EZZ Studio caches
 *.eez-project-ui-state
+
+# scan file
+all_c_h_files.txt
 
 # Keep these in repo: sdkconfig.defaults, partitions.csv

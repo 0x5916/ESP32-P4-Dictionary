@@ -5,9 +5,26 @@
 #include "ui/ui.h"
 #include "ui_overlays.h"
 #include "ui_events.h"
+#include "wifi_service.h"
+#include "nvs_flash.h"
+
+esp_err_t custom_nvs_flash_init(void) {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+    return ret;
+}
 
 void app_main(void)
 {
+    esp_err_t ret = custom_nvs_flash_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE("main", "Failed to initialize NVS flash");
+        return;
+    }
+
     bsp_display_cfg_t cfg = {
         .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
         .rotation = ESP_LV_ADAPTER_ROTATE_0,
@@ -19,6 +36,8 @@ void app_main(void)
         }};
     bsp_display_start_with_config(&cfg);
     bsp_display_backlight_on();
+
+    wifi_service_init();
 
     bsp_display_lock(-1);
     ui_init();
