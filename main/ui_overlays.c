@@ -3,6 +3,7 @@
 #include "ui/ui.h"
 #include "custom_keyboard.h"
 #include "screen_manager.h"
+#include "settings_ui.h"
 #include "esp_log.h"
 
 #define STATUS_BAR_HEIGHT 50
@@ -154,6 +155,7 @@ static void create_keyboard(void)
 
 void ui_overlays_init(void)
 {
+    settings_ui_build(objects.settings_cont);
     create_status_bar();
     create_keyboard();
 }

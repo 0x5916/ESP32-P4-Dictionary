@@ -17,6 +17,16 @@ esp_err_t custom_nvs_flash_init(void) {
     return ret;
 }
 
+static void wifi_task(void *arg) {
+    wifi_service_init();
+    vTaskDelete(NULL);
+}
+static void overlays_task(void *arg) {
+    ui_overlays_init();
+    ui_events_init();
+    vTaskDelete(NULL);
+}
+
 void app_main(void)
 {
     esp_err_t ret = custom_nvs_flash_init();
@@ -37,11 +47,10 @@ void app_main(void)
     bsp_display_start_with_config(&cfg);
     bsp_display_backlight_on();
 
-    wifi_service_init();
-
     bsp_display_lock(-1);
     ui_init();
-    ui_overlays_init();
-    ui_events_init();
     bsp_display_unlock();
+
+    xTaskCreatePinnedToCore(wifi_task, "wifi", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(overlays_task, "overlays", 4096, NULL, 5, NULL, 0);
 }

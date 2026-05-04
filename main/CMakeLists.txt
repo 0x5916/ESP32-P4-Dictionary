@@ -4,16 +4,20 @@ idf_component_register(
 
         ui_overlays.c
         ui_events.c
-
+        wifi_ui.c
         screen_manager.c
         custom_keyboard.c
-        clock_service.c
+        
+        storage/sd_card.c
 
         dict_lookup.c
         dict_spellcheck.c
+        dict_data.c
 
         wifi_service.c
-        storage/sd_card.c
+        settings_service.c
+        settings_ui.c
+        clock_service.c
 
         ui/ui.c
         ui/styles.c

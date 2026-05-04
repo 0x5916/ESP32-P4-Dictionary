@@ -385,9 +385,9 @@ void create_screen_wi_fi() {
             {
                 lv_obj_t *parent_obj = obj;
                 {
-                    // wi_fi_search_btn
+                    // wi_fi_back_btn
                     lv_obj_t *obj = lv_button_create(parent_obj);
-                    objects.wi_fi_search_btn = obj;
+                    objects.wi_fi_back_btn = obj;
                     lv_obj_set_pos(obj, 13, 3);
                     lv_obj_set_size(obj, 45, 45);
                     {

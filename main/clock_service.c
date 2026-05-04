@@ -19,12 +19,12 @@ static void clock_update_label(void) {
     }
 
     bsp_display_lock(-1);
-    ui_overlays_set_wifi_text(buf);
+    ui_overlays_set_time_text(buf);
     bsp_display_unlock();
 }
 
 void clock_service_init(void) {
-    // Initialization code for the clock service
+    clock_update_label();
 }
 
 void clock_service_notify_time_synced(void) {

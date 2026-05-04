@@ -1669,7 +1669,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
-                  "identifier": "wi_fi_search_btn",
+                  "identifier": "wi_fi_back_btn",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "px",
