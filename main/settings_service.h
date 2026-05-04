@@ -10,7 +10,10 @@ typedef struct
     bool online_fallback_enabled;
     bool show_chinese_definition;
     bool save_history;
+    bool dark_mode_enabled;
 } app_settings_t;
+
+#define SETTINGS_KEY_DARK_MODE "dark_mode_enabled"
 
 esp_err_t settings_init(void);
 esp_err_t settings_load(app_settings_t *out);

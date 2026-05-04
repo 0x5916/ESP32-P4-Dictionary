@@ -4,6 +4,7 @@
 #include "custom_keyboard.h"
 #include "screen_manager.h"
 #include "settings_ui.h"
+#include "settings_service.h"
 #include "esp_log.h"
 
 #define STATUS_BAR_HEIGHT 50
@@ -98,14 +99,32 @@ static void navigate_to_screen_cb(lv_event_t *event)
     screen_navigate(target_screen, SCREEN_ANIM_LEFT);
 }
 
-static void search_back_cb(lv_event_t *event)
+static void swipe_back_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED || !objects.main) {
+    if (lv_event_get_code(event) != LV_EVENT_GESTURE) {
         return;
     }
 
-    hide_search_keyboard();
-    screen_navigate(objects.main, SCREEN_ANIM_RIGHT);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (!indev) {
+        return;
+    }
+
+    if (lv_indev_get_gesture_dir(indev) != LV_DIR_RIGHT) {
+        return;
+    }
+
+    lv_obj_t *screen = lv_event_get_target(event);
+    if (screen == objects.search) {
+        hide_search_keyboard();
+    }
+
+    lv_obj_t *target_screen = (lv_obj_t *)lv_event_get_user_data(event);
+    if (!target_screen) {
+        return;
+    }
+
+    screen_navigate(target_screen, SCREEN_ANIM_RIGHT);
 }
 
 static void create_status_bar(void)
@@ -138,6 +157,10 @@ static void create_status_bar(void)
     lv_obj_set_style_text_font(wifi_label, &lv_font_montserrat_20, 0);
     lv_label_set_text(wifi_label, "WiFi: --");
     lv_obj_align(wifi_label, LV_ALIGN_RIGHT_MID, -12, 0);
+
+    bool dark_mode = false;
+    settings_get_bool(SETTINGS_KEY_DARK_MODE, false, &dark_mode);
+    ui_overlays_apply_theme(dark_mode);
 }
 
 static void create_keyboard(void)
@@ -155,6 +178,10 @@ static void create_keyboard(void)
 
 void ui_overlays_init(void)
 {
+    bool dark_mode = false;
+    settings_get_bool(SETTINGS_KEY_DARK_MODE, false, &dark_mode);
+    settings_ui_apply_theme(dark_mode);
+    ui_overlays_apply_theme(dark_mode);
     settings_ui_build(objects.settings_cont);
     create_status_bar();
     create_keyboard();
@@ -179,13 +206,13 @@ void ui_overlays_bind_search_open_button(lv_obj_t *button)
     lv_obj_add_event_cb(button, open_search_screen_cb, LV_EVENT_CLICKED, NULL);
 }
 
-void ui_overlays_bind_search_back_button(lv_obj_t *button)
+void ui_overlays_bind_swipe_back(lv_obj_t *screen, lv_obj_t *target_screen)
 {
-    if (!button) {
+    if (!screen || !target_screen) {
         return;
     }
 
-    lv_obj_add_event_cb(button, search_back_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(screen, swipe_back_cb, LV_EVENT_GESTURE, target_screen);
 }
 
 void ui_overlays_set_time_text(const char *text)
@@ -199,6 +226,24 @@ void ui_overlays_set_wifi_text(const char *text)
 {
     if (wifi_label && text) {
         lv_label_set_text(wifi_label, text);
+    }
+}
+
+void ui_overlays_apply_theme(bool dark_mode)
+{
+    if (!status_bar) {
+        return;
+    }
+
+    lv_color_t bg_color = dark_mode
+        ? lv_palette_darken(LV_PALETTE_GREY, 4)
+        : lv_palette_main(LV_PALETTE_BLUE);
+    lv_obj_set_style_bg_color(status_bar, bg_color, 0);
+    if (time_label) {
+        lv_obj_set_style_text_color(time_label, lv_color_white(), 0);
+    }
+    if (wifi_label) {
+        lv_obj_set_style_text_color(wifi_label, lv_color_white(), 0);
     }
 }
 

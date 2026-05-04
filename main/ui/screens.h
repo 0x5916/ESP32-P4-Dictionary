@@ -31,15 +31,12 @@ typedef struct _objects_t {
     lv_obj_t *main_history_btn;
     lv_obj_t *main_bookmark_btn;
     lv_obj_t *main_settings_btn;
-    lv_obj_t *settings_back_btn;
     lv_obj_t *settings_cont;
     lv_obj_t *search_search_ta;
     lv_obj_t *search_headword_lst;
     lv_obj_t *search_kb;
-    lv_obj_t *search_back_btn;
     lv_obj_t *wi_fi_state_switch;
     lv_obj_t *wi_fi_state_label;
-    lv_obj_t *wi_fi_back_btn;
     lv_obj_t *wi_fi_network_lst;
     lv_obj_t *wi_fi_load_spinner;
     lv_obj_t *wifi_scan_btn;
