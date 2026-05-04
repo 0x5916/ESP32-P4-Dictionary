@@ -271,7 +271,7 @@ void create_screen_search() {
             lv_obj_t *obj = lv_list_create(parent_obj);
             objects.search_headword_lst = obj;
             lv_obj_set_pos(obj, 10, 135);
-            lv_obj_set_size(obj, 460, 605);
+            lv_obj_set_size(obj, 460, 295);
             lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
         }
         {
@@ -279,8 +279,7 @@ void create_screen_search() {
             lv_obj_t *obj = lv_keyboard_create(parent_obj);
             objects.search_kb = obj;
             lv_obj_set_pos(obj, 0, 0);
-            lv_obj_set_size(obj, 480, 325);
-            lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_size(obj, 480, 310);
             lv_obj_set_style_align(obj, LV_ALIGN_BOTTOM_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
         }

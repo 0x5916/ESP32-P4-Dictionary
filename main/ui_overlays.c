@@ -6,12 +6,21 @@
 #include "esp_log.h"
 
 #define STATUS_BAR_HEIGHT 50
+#define SEARCH_HEADWORD_LIST_COMPACT_HEIGHT 295
+#define SEARCH_HEADWORD_LIST_EXPANDED_HEIGHT 605
 
 static const char *TAG = "ui_overlays";
 
 static lv_obj_t *status_bar;
 static lv_obj_t *time_label;
 static lv_obj_t *wifi_label;
+
+static void set_search_headword_list_height(lv_coord_t height)
+{
+    if (objects.search_headword_lst) {
+        lv_obj_set_height(objects.search_headword_lst, height);
+    }
+}
 
 static void hide_search_keyboard(void)
 {
@@ -28,6 +37,7 @@ static void hide_search_keyboard(void)
 
     lv_keyboard_set_textarea(objects.search_kb, NULL);
     lv_obj_add_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
+    set_search_headword_list_height(SEARCH_HEADWORD_LIST_EXPANDED_HEIGHT);
 }
 
 static void show_search_keyboard(lv_obj_t *textarea)
@@ -40,6 +50,7 @@ static void show_search_keyboard(lv_obj_t *textarea)
     lv_keyboard_set_textarea(objects.search_kb, textarea);
     lv_obj_clear_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(objects.search_kb);
+    set_search_headword_list_height(SEARCH_HEADWORD_LIST_COMPACT_HEIGHT);
 }
 
 static void keyboard_event_cb(lv_event_t *event)
@@ -59,6 +70,16 @@ static void textarea_focus_cb(lv_event_t *event)
 
     lv_obj_t *textarea = lv_event_get_target(event);
     show_search_keyboard(textarea);
+}
+
+static void open_search_screen_cb(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED || !objects.search) {
+        return;
+    }
+
+    screen_navigate(objects.search, SCREEN_ANIM_LEFT);
+    show_search_keyboard(objects.search_search_ta);
 }
 
 static void navigate_to_screen_cb(lv_event_t *event)
@@ -145,6 +166,15 @@ void ui_overlays_bind_textarea(lv_obj_t *textarea)
 
     lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_FOCUSED, NULL);
     lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_CLICKED, NULL);
+}
+
+void ui_overlays_bind_search_open_button(lv_obj_t *button)
+{
+    if (!button) {
+        return;
+    }
+
+    lv_obj_add_event_cb(button, open_search_screen_cb, LV_EVENT_CLICKED, NULL);
 }
 
 void ui_overlays_bind_search_back_button(lv_obj_t *button)
