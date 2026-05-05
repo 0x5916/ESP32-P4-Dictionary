@@ -28,6 +28,7 @@ static bool s_initialized;
 static bool s_enabled;
 static bool s_has_credentials;
 static bool s_scan_running;
+static bool s_sta_started;
 static wifi_service_state_t s_state;
 static wifi_service_scan_result_t s_scan_results[WIFI_SERVICE_SCAN_MAX_RESULTS];
 static size_t s_scan_count;
@@ -234,6 +235,7 @@ static void wifi_service_event_handler(void *arg,
 	if (event_base == WIFI_EVENT) {
 		switch (event_id) {
 		case WIFI_EVENT_STA_START:
+			s_sta_started = true;
 			if (s_has_credentials) {
 				wifi_service_set_status(WIFI_SERVICE_STATUS_CONNECTING, s_state.ssid, NULL);
 				esp_wifi_connect();
@@ -495,7 +497,8 @@ esp_err_t wifi_service_disconnect(void)
 
 esp_err_t wifi_service_scan_start(void)
 {
-	if (!s_initialized || !s_enabled) {
+
+	if (!s_initialized || !s_enabled || !s_sta_started) {
 		return ESP_ERR_INVALID_STATE;
 	}
 	if (s_scan_running) {

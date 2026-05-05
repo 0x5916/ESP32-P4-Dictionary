@@ -5,7 +5,9 @@
 #include "screen_manager.h"
 #include "settings_ui.h"
 #include "settings_service.h"
+#include "bsp/display.h"
 #include "esp_log.h"
+#include "ui_helpers.h"
 
 #define STATUS_BAR_HEIGHT 50
 #define SEARCH_HEADWORD_LIST_COMPACT_HEIGHT 295
@@ -32,13 +34,13 @@ static void hide_search_keyboard(void)
 
     lv_obj_t *textarea = lv_keyboard_get_textarea(objects.search_kb);
     if (textarea) {
-        lv_obj_clear_state(textarea, LV_STATE_FOCUSED);
-        lv_obj_clear_state(textarea, LV_STATE_CHECKED);
+        ui_obj_set_state_if(textarea, LV_STATE_FOCUSED, false);
+        ui_obj_set_state_if(textarea, LV_STATE_CHECKED, false);
         lv_obj_clear_flag(textarea, LV_OBJ_FLAG_STATE_TRICKLE);
     }
 
     lv_keyboard_set_textarea(objects.search_kb, NULL);
-    lv_obj_add_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
+    ui_obj_set_hidden(objects.search_kb, true);
     set_search_headword_list_height(SEARCH_HEADWORD_LIST_EXPANDED_HEIGHT);
 }
 
@@ -50,7 +52,7 @@ static void show_search_keyboard(lv_obj_t *textarea)
 
     lv_obj_add_state(textarea, LV_STATE_FOCUSED);
     lv_keyboard_set_textarea(objects.search_kb, textarea);
-    lv_obj_clear_flag(objects.search_kb, LV_OBJ_FLAG_HIDDEN);
+    ui_obj_set_hidden(objects.search_kb, false);
     lv_obj_move_foreground(objects.search_kb);
     set_search_headword_list_height(SEARCH_HEADWORD_LIST_COMPACT_HEIGHT);
 }
@@ -76,7 +78,7 @@ static void textarea_focus_cb(lv_event_t *event)
 
 static void open_search_screen_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED || !objects.search) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED) || !objects.search) {
         return;
     }
 
@@ -86,7 +88,7 @@ static void open_search_screen_cb(lv_event_t *event)
 
 static void navigate_to_screen_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED)) {
         return;
     }
 
@@ -101,28 +103,22 @@ static void navigate_to_screen_cb(lv_event_t *event)
 
 static void swipe_back_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_GESTURE) {
-        return;
-    }
+    if (!ui_event_is(event, LV_EVENT_GESTURE)) return;
 
     lv_indev_t *indev = lv_indev_get_act();
-    if (!indev) {
-        return;
-    }
+    if (!indev) return;
 
-    if (lv_indev_get_gesture_dir(indev) != LV_DIR_RIGHT) {
-        return;
-    }
+    if (lv_indev_get_gesture_dir(indev) != LV_DIR_RIGHT) return;
+
+    // After acting on the gesture, tell LVGL to ignore further
+    // input events until the user lifts their finger
+    lv_indev_wait_release(indev);
 
     lv_obj_t *screen = lv_event_get_target(event);
-    if (screen == objects.search) {
-        hide_search_keyboard();
-    }
+    if (screen == objects.search) hide_search_keyboard();
 
     lv_obj_t *target_screen = (lv_obj_t *)lv_event_get_user_data(event);
-    if (!target_screen) {
-        return;
-    }
+    if (!target_screen) return;
 
     screen_navigate(target_screen, SCREEN_ANIM_RIGHT);
 }
@@ -182,6 +178,11 @@ void ui_overlays_init(void)
     settings_get_bool(SETTINGS_KEY_DARK_MODE, false, &dark_mode);
     settings_ui_apply_theme(dark_mode);
     ui_overlays_apply_theme(dark_mode);
+
+    uint8_t brightness = 100;
+    settings_get_u8(SETTINGS_KEY_BRIGHTNESS, 100, &brightness);
+    bsp_display_brightness_set((int)brightness);
+
     settings_ui_build(objects.settings_cont);
     create_status_bar();
     create_keyboard();
@@ -199,11 +200,7 @@ void ui_overlays_bind_textarea(lv_obj_t *textarea)
 
 void ui_overlays_bind_search_open_button(lv_obj_t *button)
 {
-    if (!button) {
-        return;
-    }
-
-    lv_obj_add_event_cb(button, open_search_screen_cb, LV_EVENT_CLICKED, NULL);
+    ui_bind_event(button, open_search_screen_cb, LV_EVENT_CLICKED, NULL);
 }
 
 void ui_overlays_bind_swipe_back(lv_obj_t *screen, lv_obj_t *target_screen)
@@ -217,16 +214,12 @@ void ui_overlays_bind_swipe_back(lv_obj_t *screen, lv_obj_t *target_screen)
 
 void ui_overlays_set_time_text(const char *text)
 {
-    if (time_label && text) {
-        lv_label_set_text(time_label, text);
-    }
+    ui_label_set_text_if(time_label, text);
 }
 
 void ui_overlays_set_wifi_text(const char *text)
 {
-    if (wifi_label && text) {
-        lv_label_set_text(wifi_label, text);
-    }
+    ui_label_set_text_if(wifi_label, text);
 }
 
 void ui_overlays_apply_theme(bool dark_mode)

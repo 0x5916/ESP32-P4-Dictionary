@@ -1,5 +1,6 @@
 #include "custom_keyboard.h"
 #include "ui.h"
+#include "ui_helpers.h"
 #include "esp_log.h"
 #include <stddef.h>
 
@@ -51,7 +52,7 @@ CUSTOM_KB_CTRL_ACTION(4), 12, CUSTOM_KB_CTRL_ACTION(4)
 
 static void custom_keyboard_event_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) {
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
         return;
     }
 

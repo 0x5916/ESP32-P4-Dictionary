@@ -7,6 +7,7 @@
 #include "ui_events.h"
 #include "wifi_service.h"
 #include "nvs_flash.h"
+#include "settings_service.h"
 
 esp_err_t custom_nvs_flash_init(void) {
     esp_err_t ret = nvs_flash_init();
@@ -34,6 +35,7 @@ void app_main(void)
         ESP_LOGE("main", "Failed to initialize NVS flash");
         return;
     }
+    settings_init();
 
     bsp_display_cfg_t cfg = {
         .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
@@ -51,6 +53,6 @@ void app_main(void)
     ui_init();
     bsp_display_unlock();
 
-    xTaskCreatePinnedToCore(wifi_task, "wifi", 4096, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(wifi_task, "wifi", 4096, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(overlays_task, "overlays", 4096, NULL, 5, NULL, 0);
 }

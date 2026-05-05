@@ -3,6 +3,7 @@
 #include "ui/ui.h"
 #include "ui_overlays.h"
 #include "wifi_service.h"
+#include "ui_helpers.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -23,6 +24,13 @@ static bool s_pending_state_valid;
 static bool s_pending_scan_state;
 static bool s_pending_scan_state_valid;
 static bool s_pending_scan_results;
+
+static lv_obj_t *s_pwd_modal = NULL;
+typedef struct {
+    lv_obj_t *ta;
+    uint8_t   ap_index;
+    char      ssid[33];   // ← add this
+} wifi_pwd_ctx_t;
 
 static void wifi_network_item_cb(lv_event_t *event);
 static void wifi_scan_button_cb(lv_event_t *event);
@@ -64,22 +72,12 @@ static const char *wifi_auth_to_string(wifi_auth_mode_t authmode)
 
 static void wifi_ui_set_state_label(const char *text)
 {
-    if (objects.wi_fi_state_label && text) {
-        lv_label_set_text(objects.wi_fi_state_label, text);
-    }
+    ui_label_set_text_if(objects.wi_fi_state_label, text);
 }
 
 static void wifi_ui_set_spinner_visible(bool visible)
 {
-    if (!objects.wi_fi_load_spinner) {
-        return;
-    }
-
-    if (visible) {
-        lv_obj_clear_flag(objects.wi_fi_load_spinner, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(objects.wi_fi_load_spinner, LV_OBJ_FLAG_HIDDEN);
-    }
+    ui_obj_set_hidden(objects.wi_fi_load_spinner, !visible);
 }
 
 static void wifi_ui_set_switch_state(bool enabled)
@@ -89,11 +87,7 @@ static void wifi_ui_set_switch_state(bool enabled)
     }
 
     s_ignore_wifi_switch = true;
-    if (enabled) {
-        lv_obj_add_state(objects.wi_fi_state_switch, LV_STATE_CHECKED);
-    } else {
-        lv_obj_clear_state(objects.wi_fi_state_switch, LV_STATE_CHECKED);
-    }
+    ui_obj_set_state_if(objects.wi_fi_state_switch, LV_STATE_CHECKED, enabled);
     s_ignore_wifi_switch = false;
 }
 
@@ -127,9 +121,109 @@ static void wifi_ui_add_network_item(const wifi_service_scan_result_t *result, s
     lv_obj_add_event_cb(btn, wifi_network_item_cb, LV_EVENT_CLICKED, NULL);
 }
 
+static void pwd_cancel_cb(lv_event_t *e)
+{
+    if (s_pwd_modal) {
+        lv_obj_delete(s_pwd_modal);
+        s_pwd_modal = NULL;
+    }
+}
+
+static void pwd_join_cb(lv_event_t *e)
+{
+    wifi_pwd_ctx_t *ctx = lv_event_get_user_data(e);
+    const char *pwd = lv_textarea_get_text(ctx->ta);
+
+    // Use wifi_service_connect(ssid, password) — NOT wifi_service_connect_with_password
+    esp_err_t err = wifi_service_connect(ctx->ssid, pwd);
+    if (err != ESP_OK) {
+        ESP_LOGW("wifi_ui", "Failed to connect: %s", esp_err_to_name(err));
+    }
+
+    free(ctx);
+    pwd_cancel_cb(e);  // close modal
+}
+
+static void pwd_show_toggle_cb(lv_event_t *e)
+{
+    lv_obj_t *ta = lv_event_get_user_data(e);
+    bool hidden = lv_textarea_get_password_mode(ta);
+    lv_textarea_set_password_mode(ta, !hidden);
+    lv_obj_t *btn = lv_event_get_target(e);
+    lv_label_set_text(lv_obj_get_child(btn, 0), hidden ? "Hide" : "Show");
+}
+
+void wifi_ui_show_password_prompt(const char *ssid, uint8_t ap_index)
+{
+    // Backdrop
+    s_pwd_modal = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(s_pwd_modal, 480, 800);
+    lv_obj_set_style_bg_color(s_pwd_modal, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_pwd_modal, LV_OPA_50, 0);
+    lv_obj_remove_flag(s_pwd_modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Card container
+    lv_obj_t *card = lv_obj_create(s_pwd_modal);
+    lv_obj_set_size(card, 440, 320);
+    lv_obj_align(card, LV_ALIGN_CENTER, 0, -60);
+    lv_obj_set_style_radius(card, 16, 0);
+
+    // Title label
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text_fmt(title, "Join \"%s\"", ssid);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+    // Password textarea
+    lv_obj_t *ta = lv_textarea_create(card);
+    lv_textarea_set_placeholder_text(ta, "Password");
+    lv_textarea_set_password_mode(ta, true);
+    lv_textarea_set_one_line(ta, true);
+    lv_obj_set_size(ta, 380, 50);
+    lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 56);
+    lv_obj_set_style_text_font(ta, &lv_font_montserrat_22, 0);
+
+    // Show/hide password toggle
+    lv_obj_t *show_btn = lv_button_create(card);
+    lv_obj_set_size(show_btn, 120, 40);
+    lv_obj_align(show_btn, LV_ALIGN_TOP_LEFT, 8, 118);
+    lv_obj_t *show_lbl = lv_label_create(show_btn);
+    lv_label_set_text(show_lbl, "Show");
+    lv_obj_center(show_lbl);
+    lv_obj_add_event_cb(show_btn, pwd_show_toggle_cb, LV_EVENT_CLICKED, ta);
+
+    // Cancel button
+    lv_obj_t *cancel_btn = lv_button_create(card);
+    lv_obj_set_size(cancel_btn, 160, 50);
+    lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_LEFT, 8, -8);
+    lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_center(cancel_lbl);
+    lv_obj_add_event_cb(cancel_btn, pwd_cancel_cb, LV_EVENT_CLICKED, NULL);
+
+    // Join button
+    lv_obj_t *join_btn = lv_button_create(card);
+    lv_obj_set_size(join_btn, 160, 50);
+    lv_obj_align(join_btn, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+    lv_obj_t *join_lbl = lv_label_create(join_btn);
+    lv_label_set_text(join_lbl, "Join");
+    lv_obj_center(join_lbl);
+
+    // Pass both ta and ap_index to the join callback
+    wifi_pwd_ctx_t *ctx = malloc(sizeof(wifi_pwd_ctx_t));
+    ctx->ta       = ta;
+    ctx->ap_index = ap_index;
+    strncpy(ctx->ssid, ssid, sizeof(ctx->ssid) - 1);   // ← add this
+    ctx->ssid[sizeof(ctx->ssid) - 1] = '\0';
+    lv_obj_add_event_cb(join_btn, pwd_join_cb, LV_EVENT_CLICKED, ctx);
+
+    // Attach keyboard to textarea
+    ui_overlays_bind_textarea(ta);
+}
+
 static void wifi_network_item_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED)) {
         return;
     }
 
@@ -151,11 +245,12 @@ static void wifi_network_item_cb(lv_event_t *event)
     ui_overlays_set_wifi_text("WiFi: Auth required");
     wifi_ui_set_state_label("Password needed");
     // TODO: Prompt for password UI and call wifi_service_connect().
+    wifi_ui_show_password_prompt(result->ssid, (uint8_t)index);
 }
 
 static void wifi_scan_button_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED)) {
         return;
     }
 
@@ -171,7 +266,7 @@ static void wifi_scan_button_cb(lv_event_t *event)
 
 static void wifi_switch_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED || s_ignore_wifi_switch) {
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED) || s_ignore_wifi_switch) {
         return;
     }
 
@@ -330,13 +425,8 @@ static void wifi_ui_apply_scan_results(void *user_ctx)
 
 void wifi_ui_init(void)
 {
-    if (objects.wifi_scan_btn) {
-        lv_obj_add_event_cb(objects.wifi_scan_btn, wifi_scan_button_cb, LV_EVENT_CLICKED, NULL);
-    }
-
-    if (objects.wi_fi_state_switch) {
-        lv_obj_add_event_cb(objects.wi_fi_state_switch, wifi_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    }
+    ui_bind_event(objects.wifi_scan_btn, wifi_scan_button_cb, LV_EVENT_CLICKED, NULL);
+    ui_bind_event(objects.wi_fi_state_switch, wifi_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     wifi_service_callbacks_t callbacks = {
         .on_status = wifi_ui_on_status,

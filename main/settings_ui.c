@@ -1,9 +1,12 @@
 #include "settings_ui.h"
 
+#include "bsp/esp-bsp.h"
+#include "bsp/display.h"
 #include "screen_manager.h"
 #include "settings_service.h"
 #include "ui_overlays.h"
 #include "ui/ui.h"
+#include "ui_helpers.h"
 
 static bool settings_ui_is_dark_mode(void)
 {
@@ -12,34 +15,27 @@ static bool settings_ui_is_dark_mode(void)
     return enabled;
 }
 
-static lv_color_t settings_title_color(bool dark)
-{
-    return dark ? lv_palette_lighten(LV_PALETTE_BLUE, 2) : lv_palette_main(LV_PALETTE_BLUE);
-}
+typedef struct {
+    lv_color_t title;
+    lv_color_t row_bg;
+    lv_color_t row_border;
+    lv_color_t row_pressed_bg;
+    lv_color_t row_pressed_border;
+    lv_color_t subtitle;
+} settings_palette_t;
 
-static lv_color_t settings_row_bg_color(bool dark)
+static settings_palette_t settings_palette(bool dark)
 {
-    return dark ? lv_palette_darken(LV_PALETTE_GREY, 4) : lv_color_white();
-}
+    settings_palette_t palette = {
+        .title = dark ? lv_palette_lighten(LV_PALETTE_BLUE, 2) : lv_palette_main(LV_PALETTE_BLUE),
+        .row_bg = dark ? lv_palette_darken(LV_PALETTE_GREY, 4) : lv_color_white(),
+        .row_border = dark ? lv_palette_darken(LV_PALETTE_GREY, 2) : lv_palette_lighten(LV_PALETTE_GREY, 2),
+        .row_pressed_bg = dark ? lv_palette_darken(LV_PALETTE_BLUE, 3) : lv_palette_lighten(LV_PALETTE_BLUE, 4),
+        .row_pressed_border = lv_palette_main(LV_PALETTE_BLUE),
+        .subtitle = dark ? lv_palette_lighten(LV_PALETTE_GREY, 2) : lv_palette_darken(LV_PALETTE_GREY, 1)
+    };
 
-static lv_color_t settings_row_border_color(bool dark)
-{
-    return dark ? lv_palette_darken(LV_PALETTE_GREY, 2) : lv_palette_lighten(LV_PALETTE_GREY, 2);
-}
-
-static lv_color_t settings_row_pressed_bg_color(bool dark)
-{
-    return dark ? lv_palette_darken(LV_PALETTE_BLUE, 3) : lv_palette_lighten(LV_PALETTE_BLUE, 4);
-}
-
-static lv_color_t settings_row_pressed_border_color(bool dark)
-{
-    return dark ? lv_palette_main(LV_PALETTE_BLUE) : lv_palette_main(LV_PALETTE_BLUE);
-}
-
-static lv_color_t settings_subtitle_color(bool dark)
-{
-    return dark ? lv_palette_lighten(LV_PALETTE_GREY, 2) : lv_palette_darken(LV_PALETTE_GREY, 1);
+    return palette;
 }
 
 void settings_ui_apply_theme(bool dark_mode)
@@ -83,11 +79,12 @@ static void style_settings_parent(lv_obj_t *parent) {
 
 lv_obj_t *settings_create_section_title(lv_obj_t *parent, const char *title) {
     bool dark_mode = settings_ui_is_dark_mode();
+    settings_palette_t palette = settings_palette(dark_mode);
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, title);
     lv_obj_set_width(label, lv_pct(100));
     lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(label, settings_title_color(dark_mode), 0);
+    lv_obj_set_style_text_color(label, palette.title, 0);
     lv_obj_set_style_pad_top(label, 8, 0);
     lv_obj_set_style_pad_bottom(label, 2, 0);
     return label;
@@ -95,6 +92,7 @@ lv_obj_t *settings_create_section_title(lv_obj_t *parent, const char *title) {
 
 static lv_obj_t *settings_create_row_base(lv_obj_t *parent) {
     bool dark_mode = settings_ui_is_dark_mode();
+    settings_palette_t palette = settings_palette(dark_mode);
     lv_obj_t *row = lv_obj_create(parent);
     lv_obj_set_width(row, lv_pct(100));
     lv_obj_set_height(row, LV_SIZE_CONTENT);
@@ -103,10 +101,10 @@ static lv_obj_t *settings_create_row_base(lv_obj_t *parent) {
     lv_obj_set_style_pad_row(row, 6, 0);
     lv_obj_set_style_radius(row, 12, 0);
     lv_obj_set_style_border_width(row, 1, 0);
-    lv_obj_set_style_border_color(row, settings_row_border_color(dark_mode), 0);
-    lv_obj_set_style_bg_color(row, settings_row_bg_color(dark_mode), 0);
-    lv_obj_set_style_bg_color(row, settings_row_pressed_bg_color(dark_mode), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(row, settings_row_pressed_border_color(dark_mode), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(row, palette.row_border, 0);
+    lv_obj_set_style_bg_color(row, palette.row_bg, 0);
+    lv_obj_set_style_bg_color(row, palette.row_pressed_bg, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(row, palette.row_pressed_border, LV_STATE_PRESSED);
     lv_obj_set_style_border_width(row, 2, LV_STATE_PRESSED);
     lv_obj_set_layout(row, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
@@ -116,6 +114,7 @@ static lv_obj_t *settings_create_row_base(lv_obj_t *parent) {
 
 static lv_obj_t *settings_create_text_block(lv_obj_t *parent, const char *title, const char *subtitle) {
     bool dark_mode = settings_ui_is_dark_mode();
+    settings_palette_t palette = settings_palette(dark_mode);
     lv_obj_t *col = lv_obj_create(parent);
     lv_obj_remove_style_all(col);
     lv_obj_add_flag(col, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -136,7 +135,7 @@ static lv_obj_t *settings_create_text_block(lv_obj_t *parent, const char *title,
         lv_label_set_long_mode(subtitle_label, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(subtitle_label, lv_pct(100));
         lv_obj_set_style_text_font(subtitle_label, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(subtitle_label, settings_subtitle_color(dark_mode), 0);
+        lv_obj_set_style_text_color(subtitle_label, palette.subtitle, 0);
     }
 
     return col;
@@ -144,7 +143,7 @@ static lv_obj_t *settings_create_text_block(lv_obj_t *parent, const char *title,
 
 static void settings_toggle_switch_from_row(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED)) {
         return;
     }
 
@@ -153,11 +152,7 @@ static void settings_toggle_switch_from_row(lv_event_t *event)
         return;
     }
 
-    if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
-        lv_obj_clear_state(sw, LV_STATE_CHECKED);
-    } else {
-        lv_obj_add_state(sw, LV_STATE_CHECKED);
-    }
+    ui_obj_set_state_if(sw, LV_STATE_CHECKED, !lv_obj_has_state(sw, LV_STATE_CHECKED));
 
     lv_obj_send_event(sw, LV_EVENT_VALUE_CHANGED, NULL);
 }
@@ -173,12 +168,8 @@ lv_obj_t *settings_create_switch_row(lv_obj_t *parent,
     settings_create_text_block(row, title, subtitle);
 
     lv_obj_t *sw = lv_switch_create(row);
-    if (checked) {
-        lv_obj_add_state(sw, LV_STATE_CHECKED);
-    }
-    if (cb) {
-        lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, user_data);
-    }
+    ui_obj_set_state_if(sw, LV_STATE_CHECKED, checked);
+    ui_bind_event(sw, cb, LV_EVENT_VALUE_CHANGED, user_data);
     lv_obj_add_event_cb(row, settings_toggle_switch_from_row, LV_EVENT_CLICKED, sw);
     return sw;
 }
@@ -193,9 +184,7 @@ lv_obj_t *settings_create_action_row(lv_obj_t *parent,
     lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
     settings_create_text_block(row, title, subtitle);
 
-    if (cb) {
-        lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, user_data);
-    }
+    ui_bind_event(row, cb, LV_EVENT_CLICKED, user_data);
 
     const char *indicator_text = button_text;
     if ((!indicator_text || indicator_text[0] == '\0') && cb) {
@@ -211,9 +200,7 @@ lv_obj_t *settings_create_action_row(lv_obj_t *parent,
         lv_label_set_text(label, indicator_text);
         lv_obj_center(label);
 
-        if (cb) {
-            lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
-        }
+        ui_bind_event(btn, cb, LV_EVENT_CLICKED, user_data);
     }
     return row;
 }
@@ -233,15 +220,42 @@ lv_obj_t *settings_create_dropdown_row(lv_obj_t *parent,
     lv_dropdown_set_selected(dd, selected);
     lv_obj_set_width(dd, 140);
 
-    if (cb) {
-        lv_obj_add_event_cb(dd, cb, LV_EVENT_VALUE_CHANGED, user_data);
-    }
+    ui_bind_event(dd, cb, LV_EVENT_VALUE_CHANGED, user_data);
     return dd;
+}
+
+static lv_obj_t *settings_create_slider_row(lv_obj_t *parent,
+                                           const char *title,
+                                           const char *subtitle,
+                                           int32_t min_value,
+                                           int32_t max_value,
+                                           int32_t value,
+                                           lv_event_cb_t cb,
+                                           void *user_data)
+{
+    lv_obj_t *row = settings_create_row_base(parent);
+    settings_create_text_block(row, title, subtitle);
+
+    lv_obj_t *slider = lv_slider_create(row);
+    lv_slider_set_range(slider, min_value, max_value);
+    lv_slider_set_value(slider, value, LV_ANIM_OFF);
+    lv_obj_set_width(slider, 160);
+    
+    lv_obj_clear_flag(slider, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    lv_obj_t *value_label = lv_label_create(row);
+    lv_obj_set_width(value_label, 52);
+    lv_obj_set_style_text_align(value_label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text_fmt(value_label, "%d%%", (int)value);
+
+    ui_bind_event(slider, cb, LV_EVENT_VALUE_CHANGED, user_data ? user_data : value_label);
+
+    return slider;
 }
 
 static void settings_open_wifi_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_CLICKED || !objects.wi_fi) {
+    if (!ui_event_is(event, LV_EVENT_CLICKED) || !objects.wi_fi) {
         return;
     }
 
@@ -250,7 +264,7 @@ static void settings_open_wifi_cb(lv_event_t *event)
 
 static void settings_dark_mode_cb(lv_event_t *event)
 {
-    if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) {
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
         return;
     }
 
@@ -262,21 +276,50 @@ static void settings_dark_mode_cb(lv_event_t *event)
     lv_async_call(settings_rebuild_async, objects.settings_cont);
 }
 
+static void settings_brightness_cb(lv_event_t *event)
+{
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
+        return;
+    }
+
+    lv_obj_t *slider = lv_event_get_target(event);
+    int32_t value = lv_slider_get_value(slider);
+    if (value < 0) {
+        value = 0;
+    } else if (value > 100) {
+        value = 100;
+    }
+
+    lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(event);
+    if (label) {
+        lv_label_set_text_fmt(label, "%d%%", (int)value);
+    }
+
+    bsp_display_brightness_set((int)value);
+    settings_set_u8(SETTINGS_KEY_BRIGHTNESS, (uint8_t)value);
+}
+
+static void settings_show_zh_cb(lv_event_t *event)
+{
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
+        return;
+    }
+
+    lv_obj_t *sw = lv_event_get_target(event);
+    bool enabled = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    settings_set_bool(SETTINGS_KEY_SHOW_ZH, enabled);
+    lv_async_call(settings_rebuild_async, objects.settings_cont);
+}
+
 void settings_ui_build(lv_obj_t *parent) {
     if (!parent) {
         return;
     }
 
+    bsp_display_lock(-1);
+
     lv_obj_clean(parent);
     style_settings_parent(parent);
-
-    // settings_create_section_title(parent, "Dictionary");
-    // settings_create_switch_row(parent,
-    //                            "Show Chinese definitions",
-    //                            "Display bilingual meanings when available",
-    //                            true,
-    //                            settings_show_zh_cb,
-    //                            NULL);
 
     settings_create_section_title(parent, "Network");
     settings_create_action_row(parent,
@@ -296,12 +339,26 @@ void settings_ui_build(lv_obj_t *parent) {
                                settings_dark_mode_cb,
                                NULL);
 
-    // settings_create_switch_row(parent,
-    //                            "Online fallback",
-    //                            "Use Wi-Fi lookup when offline dictionary misses a word",
-    //                            true,
-    //                            settings_online_fallback_cb,
-    //                            NULL);
+    uint8_t brightness = 100;
+    settings_get_u8(SETTINGS_KEY_BRIGHTNESS, 100, &brightness);
+    settings_create_slider_row(parent,
+                               "Brightness",
+                               "Adjust display backlight",
+                               10,
+                               100,
+                               brightness,
+                               settings_brightness_cb,
+                               NULL);
+
+    settings_create_section_title(parent, "Dictionary");
+    bool show_zh = true;
+    settings_get_bool(SETTINGS_KEY_SHOW_ZH, true, &show_zh);
+    settings_create_switch_row(parent,
+                               "Show Chinese definitions",
+                               "Display bilingual meanings when available",
+                               show_zh,
+                               settings_show_zh_cb,
+                               NULL);
 
     // settings_create_dropdown_row(parent,
     //                              "Font size",
@@ -325,4 +382,6 @@ void settings_ui_build(lv_obj_t *parent) {
     //                            "Clear",
     //                            settings_clear_history_cb,
     //                            NULL);
+
+    bsp_display_unlock();
 }
