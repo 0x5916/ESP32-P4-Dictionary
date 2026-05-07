@@ -7,6 +7,9 @@
 #include "ui_overlays.h"
 #include "ui/ui.h"
 #include "ui_helpers.h"
+#include "esp_log.h"
+
+static const char *TAG = "settings_ui";
 
 static bool settings_ui_is_dark_mode(void)
 {
@@ -259,6 +262,7 @@ static void settings_open_wifi_cb(lv_event_t *event)
         return;
     }
 
+    ESP_LOGD(TAG, "[UI] Navigating to WiFi settings");
     screen_navigate(objects.wi_fi, SCREEN_ANIM_LEFT);
 }
 
@@ -270,7 +274,10 @@ static void settings_dark_mode_cb(lv_event_t *event)
 
     lv_obj_t *sw = lv_event_get_target(event);
     bool enabled = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    ESP_LOGI(TAG, "[UI] Dark mode toggle: %u", enabled);
+    
     settings_set_bool(SETTINGS_KEY_DARK_MODE, enabled);
+    ESP_LOGD(TAG, "[UI] Applying dark mode theme");
     settings_ui_apply_theme(enabled);
     ui_overlays_apply_theme(enabled);
     lv_async_call(settings_rebuild_async, objects.settings_cont);
@@ -290,6 +297,8 @@ static void settings_brightness_cb(lv_event_t *event)
         value = 100;
     }
 
+    ESP_LOGD(TAG, "[UI] Brightness slider: %d%%", (int)value);
+    
     lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(event);
     if (label) {
         lv_label_set_text_fmt(label, "%d%%", (int)value);
@@ -297,6 +306,7 @@ static void settings_brightness_cb(lv_event_t *event)
 
     bsp_display_brightness_set((int)value);
     settings_set_u8(SETTINGS_KEY_BRIGHTNESS, (uint8_t)value);
+    ESP_LOGI(TAG, "[UI] Brightness set to %d%%", (int)value);
 }
 
 static void settings_show_zh_cb(lv_event_t *event)

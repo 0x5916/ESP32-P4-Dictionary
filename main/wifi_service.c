@@ -1,675 +1,553 @@
 #include "wifi_service.h"
-#include "sdkconfig.h"
-
-#define CONFIG_ESP_WIFI_ENABLED true
-
-#if defined(CONFIG_ESP_WIFI_ENABLED) && CONFIG_ESP_WIFI_ENABLED
-
-#include <string.h>
-
-#include "esp_event.h"
-#include <string.h>
 
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "esp_event.h"
 #include "nvs.h"
+#include "nvs_flash.h"
+#include "settings_service.h"
 
-#define WIFI_SERVICE_SCAN_MAX_RESULTS 20
-#define WIFI_SERVICE_NVS_NAMESPACE "wifi_cfg"
-#define WIFI_SERVICE_NVS_KEY_SSID "ssid"
-#define WIFI_SERVICE_NVS_KEY_PASS "pass"
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "wifi_service";
 
-static bool s_initialized;
-static bool s_enabled;
-static bool s_has_credentials;
-static bool s_scan_running;
-static bool s_sta_started;
-static wifi_service_state_t s_state;
-static wifi_service_scan_result_t s_scan_results[WIFI_SERVICE_SCAN_MAX_RESULTS];
-static size_t s_scan_count;
-static wifi_service_callbacks_t s_callbacks;
-static SemaphoreHandle_t s_state_mutex;
-static esp_netif_t *s_wifi_netif;
-static esp_event_handler_instance_t s_wifi_event_instance;
-static esp_event_handler_instance_t s_ip_event_instance;
+#define WIFI_SERVICE_NVS_NAMESPACE "wifi_cfg"
+#define WIFI_SERVICE_NVS_KEY_SSID  "ssid"
+#define WIFI_SERVICE_NVS_KEY_PASS  "pass"
 
-static void wifi_service_copy_str(char *dest, size_t dest_len, const char *src)
+// ---- Internal state ----
+static wifi_state_t s_state               = WIFI_STATE_DISABLED;
+static bool         s_initialized         = false;
+static bool         s_has_credentials     = false;
+static bool         s_auto_reconnect      = false;
+static char         s_connected_ssid[33]   = {0};
+static char         s_saved_ssid[33]       = {0};
+static char         s_saved_password[65]    = {0};
+
+static wifi_scan_done_cb_t    s_scan_done_cb    = NULL;
+static wifi_state_changed_cb_t s_state_changed_cb = NULL;
+
+// ---- Helpers ----
+
+static void set_state(wifi_state_t new_state, const char *ssid)
 {
-    if (!dest || dest_len == 0) {
-        return;
+    s_state = new_state;
+    if (s_state_changed_cb) {
+        s_state_changed_cb(new_state, ssid);
+    }
+}
+
+static void wifi_service_clear_saved_credentials(void)
+{
+    memset(s_saved_ssid, 0, sizeof(s_saved_ssid));
+    memset(s_saved_password, 0, sizeof(s_saved_password));
+    s_has_credentials = false;
+}
+
+static esp_err_t wifi_service_load_saved_credentials(char *ssid, size_t ssid_len,
+                                                     char *password, size_t password_len,
+                                                     bool *found)
+{
+    if (!ssid || !password || !found || ssid_len == 0 || password_len == 0) {
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (!src) {
-        dest[0] = '\0';
-        return;
+    *found = false;
+    ssid[0] = '\0';
+    password[0] = '\0';
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        return err;
     }
 
-    size_t src_len = strlen(src);
-    size_t copy_len = src_len < (dest_len - 1) ? src_len : (dest_len - 1);
-    memcpy(dest, src, copy_len);
-    dest[copy_len] = '\0';
-}
+    size_t ssid_size = ssid_len;
+    err = nvs_get_str(handle, WIFI_SERVICE_NVS_KEY_SSID, ssid, &ssid_size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
 
-static void wifi_service_lock(void)
-{
-	if (s_state_mutex) {
-		xSemaphoreTake(s_state_mutex, portMAX_DELAY);
-	}
-}
+    size_t pass_size = password_len;
+    esp_err_t pass_err = nvs_get_str(handle, WIFI_SERVICE_NVS_KEY_PASS, password, &pass_size);
+    if (pass_err == ESP_ERR_NVS_NOT_FOUND) {
+        password[0] = '\0';
+    } else if (pass_err != ESP_OK) {
+        nvs_close(handle);
+        return pass_err;
+    }
 
-static void wifi_service_unlock(void)
-{
-	if (s_state_mutex) {
-		xSemaphoreGive(s_state_mutex);
-	}
-}
-
-static void wifi_service_notify_status(void)
-{
-	wifi_service_callbacks_t callbacks = s_callbacks;
-	if (!callbacks.on_status) {
-		return;
-	}
-
-	wifi_service_state_t snapshot = {0};
-	if (wifi_service_get_state(&snapshot) == ESP_OK) {
-		callbacks.on_status(&snapshot, callbacks.user_ctx);
-	}
-}
-
-static void wifi_service_notify_scan_state(bool scanning)
-{
-	wifi_service_callbacks_t callbacks = s_callbacks;
-	if (callbacks.on_scan_state) {
-		callbacks.on_scan_state(scanning, callbacks.user_ctx);
-	}
-}
-
-static void wifi_service_notify_scan_done(void)
-{
-	wifi_service_callbacks_t callbacks = s_callbacks;
-	if (callbacks.on_scan_done) {
-		callbacks.on_scan_done(s_scan_results, s_scan_count, callbacks.user_ctx);
-	}
-}
-
-static void wifi_service_set_status(wifi_service_status_t status,
-									const char *ssid,
-									const esp_ip4_addr_t *ip)
-{
-	wifi_service_lock();
-	s_state.status = status;
-	if (ssid) {
-		wifi_service_copy_str(s_state.ssid, sizeof(s_state.ssid), ssid);
-	}
-	if (ip) {
-		s_state.ip_v4 = ip->addr;
-	} else if (status != WIFI_SERVICE_STATUS_GOT_IP) {
-		s_state.ip_v4 = 0;
-	}
-	wifi_service_unlock();
-
-	wifi_service_notify_status();
+    nvs_close(handle);
+    *found = (ssid[0] != '\0');
+    return ESP_OK;
 }
 
 static esp_err_t wifi_service_save_credentials(const char *ssid, const char *password)
 {
-	nvs_handle_t handle;
-	esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
-	if (err != ESP_OK) {
-		return err;
-	}
+    if (!ssid || ssid[0] == '\0' || !password) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
-	err = nvs_set_str(handle, WIFI_SERVICE_NVS_KEY_SSID, ssid ? ssid : "");
-	if (err == ESP_OK) {
-		err = nvs_set_str(handle, WIFI_SERVICE_NVS_KEY_PASS, password ? password : "");
-	}
-	if (err == ESP_OK) {
-		err = nvs_commit(handle);
-	}
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
 
-	nvs_close(handle);
-	return err;
+    err = nvs_set_str(handle, WIFI_SERVICE_NVS_KEY_SSID, ssid);
+    if (err == ESP_OK) {
+        err = nvs_set_str(handle, WIFI_SERVICE_NVS_KEY_PASS, password);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+
+    nvs_close(handle);
+
+    if (err == ESP_OK) {
+        snprintf(s_saved_ssid, sizeof(s_saved_ssid), "%s", ssid);
+        snprintf(s_saved_password, sizeof(s_saved_password), "%s", password);
+        s_has_credentials = true;
+    }
+
+    return err;
 }
 
-static esp_err_t wifi_service_load_credentials(char *ssid,
-											   size_t ssid_len,
-											   char *password,
-											   size_t password_len,
-											   bool *found)
+static esp_err_t wifi_service_apply_saved_credentials(void)
 {
-	if (!ssid || !password || !found) {
-		return ESP_ERR_INVALID_ARG;
-	}
+    if (!s_has_credentials || s_saved_ssid[0] == '\0') {
+        return ESP_ERR_NOT_FOUND;
+    }
 
-	*found = false;
-	ssid[0] = '\0';
-	password[0] = '\0';
+    wifi_config_t wifi_cfg;
+    memset(&wifi_cfg, 0, sizeof(wifi_cfg));
+    snprintf((char *)wifi_cfg.sta.ssid, sizeof(wifi_cfg.sta.ssid), "%s", s_saved_ssid);
+    snprintf((char *)wifi_cfg.sta.password, sizeof(wifi_cfg.sta.password), "%s", s_saved_password);
+    wifi_cfg.sta.threshold.authmode = (s_saved_password[0] != '\0') ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
 
-	nvs_handle_t handle;
-	esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READONLY, &handle);
-	if (err == ESP_ERR_NVS_NOT_FOUND) {
-		return ESP_OK;
-	}
-	if (err != ESP_OK) {
-		return err;
-	}
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[CONNECT] esp_wifi_set_config(saved) failed: %s", esp_err_to_name(err));
+        return err;
+    }
 
-	size_t ssid_size = ssid_len;
-	err = nvs_get_str(handle, WIFI_SERVICE_NVS_KEY_SSID, ssid, &ssid_size);
-	if (err == ESP_ERR_NVS_NOT_FOUND) {
-		nvs_close(handle);
-		return ESP_OK;
-	}
-	if (err != ESP_OK) {
-		nvs_close(handle);
-		return err;
-	}
-
-	size_t pass_size = password_len;
-	esp_err_t pass_err = nvs_get_str(handle, WIFI_SERVICE_NVS_KEY_PASS, password, &pass_size);
-	if (pass_err == ESP_ERR_NVS_NOT_FOUND) {
-		password[0] = '\0';
-	} else if (pass_err != ESP_OK) {
-		nvs_close(handle);
-		return pass_err;
-	}
-
-	nvs_close(handle);
-	*found = true;
-	return ESP_OK;
+    err = esp_wifi_connect();
+    if (err == ESP_OK) {
+        set_state(WIFI_STATE_CONNECTING, s_saved_ssid);
+        s_auto_reconnect = true;
+    }
+    return err;
 }
 
-static void wifi_service_handle_scan_done(void)
+static void wifi_service_request_saved_reconnect(void)
 {
-	uint16_t ap_count = 0;
-	esp_err_t err = esp_wifi_scan_get_ap_num(&ap_count);
-	if (err != ESP_OK) {
-		ESP_LOGW(TAG, "Failed to get scan count: %s", esp_err_to_name(err));
-		ap_count = 0;
-	}
+    if (!s_auto_reconnect || !s_has_credentials || s_saved_ssid[0] == '\0') {
+        return;
+    }
 
-	uint16_t fetch_count = ap_count;
-	if (fetch_count > WIFI_SERVICE_SCAN_MAX_RESULTS) {
-		fetch_count = WIFI_SERVICE_SCAN_MAX_RESULTS;
-	}
-
-	wifi_ap_record_t ap_records[WIFI_SERVICE_SCAN_MAX_RESULTS] = {0};
-	if (fetch_count > 0) {
-		err = esp_wifi_scan_get_ap_records(&fetch_count, ap_records);
-		if (err != ESP_OK) {
-			ESP_LOGW(TAG, "Failed to get scan records: %s", esp_err_to_name(err));
-			fetch_count = 0;
-		}
-	}
-
-	s_scan_count = 0;
-	for (uint16_t i = 0; i < fetch_count && s_scan_count < WIFI_SERVICE_SCAN_MAX_RESULTS; ++i) {
-		const wifi_ap_record_t *record = &ap_records[i];
-		if (record->ssid[0] == '\0') {
-			continue;
-		}
-
-		wifi_service_scan_result_t *dest = &s_scan_results[s_scan_count++];
-		wifi_service_copy_str(dest->ssid, sizeof(dest->ssid), (const char *)record->ssid);
-		dest->rssi = record->rssi;
-		dest->authmode = record->authmode;
-	}
-
-	s_scan_running = false;
-	wifi_service_notify_scan_state(false);
-	wifi_service_notify_scan_done();
+    ESP_LOGI(TAG, "[EVT] Reconnecting to saved SSID '%s'", s_saved_ssid);
+    if (esp_wifi_connect() == ESP_OK) {
+        set_state(WIFI_STATE_CONNECTING, s_saved_ssid);
+    }
 }
 
-static void wifi_service_event_handler(void *arg,
-									   esp_event_base_t event_base,
-									   int32_t event_id,
-									   void *event_data)
+// ---- ESP event handler ----
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base,
+                                int32_t event_id, void *event_data)
 {
-	(void)arg;
-	if (event_base == WIFI_EVENT) {
-		switch (event_id) {
-		case WIFI_EVENT_STA_START:
-			s_sta_started = true;
-			if (s_has_credentials) {
-				wifi_service_set_status(WIFI_SERVICE_STATUS_CONNECTING, s_state.ssid, NULL);
-				esp_wifi_connect();
-			} else {
-				wifi_service_set_status(WIFI_SERVICE_STATUS_DISCONNECTED, s_state.ssid, NULL);
-			}
-			break;
-		case WIFI_EVENT_STA_CONNECTED:
-			wifi_service_set_status(WIFI_SERVICE_STATUS_CONNECTED, s_state.ssid, NULL);
-			break;
-		case WIFI_EVENT_STA_DISCONNECTED:
-			wifi_service_set_status(WIFI_SERVICE_STATUS_DISCONNECTED, s_state.ssid, NULL);
-			if (s_enabled && s_has_credentials) {
-				esp_wifi_connect();
-			}
-			break;
-		case WIFI_EVENT_STA_STOP:
-			wifi_service_set_status(WIFI_SERVICE_STATUS_STOPPED, s_state.ssid, NULL);
-			break;
-		case WIFI_EVENT_SCAN_DONE:
-			wifi_service_handle_scan_done();
-			break;
-		default:
-			break;
-		}
-	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-		wifi_service_set_status(WIFI_SERVICE_STATUS_GOT_IP, s_state.ssid, &event->ip_info.ip);
-	}
+    if (event_base == WIFI_EVENT) {
+        switch (event_id) {
+            case WIFI_EVENT_STA_START:
+                ESP_LOGD(TAG, "[EVT] STA_START");
+                wifi_service_request_saved_reconnect();
+                break;
+
+            case WIFI_EVENT_SCAN_DONE: {
+                ESP_LOGI(TAG, "[EVT] SCAN_DONE");
+
+                uint16_t ap_count = WIFI_SERVICE_MAX_APS;
+
+                // ✅ FIXED: static so it lives in BSS, not on sys_evt's stack
+                static wifi_ap_record_t ap_records[WIFI_SERVICE_MAX_APS];
+                memset(ap_records, 0, sizeof(ap_records));
+
+                esp_err_t err = esp_wifi_scan_get_ap_records(&ap_count, ap_records);
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "[SCAN] esp_wifi_scan_get_ap_records failed: %s", esp_err_to_name(err));
+                    set_state(WIFI_STATE_IDLE, NULL);
+                    break;
+                }
+
+                ESP_LOGI(TAG, "[SCAN] Found %u APs", ap_count);
+
+                static wifi_ap_info_t results[WIFI_SERVICE_MAX_APS];
+                for (uint16_t i = 0; i < ap_count; i++) {
+                    strncpy(results[i].ssid, (char *)ap_records[i].ssid, sizeof(results[i].ssid) - 1);
+                    results[i].ssid[sizeof(results[i].ssid) - 1] = '\0';
+                    results[i].rssi             = ap_records[i].rssi;
+                    results[i].auth_mode        = ap_records[i].authmode;
+                    results[i].requires_password = (ap_records[i].authmode != WIFI_AUTH_OPEN);
+                }
+
+                set_state(WIFI_STATE_IDLE, NULL);
+
+                if (s_scan_done_cb) {
+                    s_scan_done_cb(results, ap_count);
+                }
+                break;
+            }
+
+            case WIFI_EVENT_STA_DISCONNECTED: {
+                wifi_event_sta_disconnected_t *disc = (wifi_event_sta_disconnected_t *)event_data;
+                ESP_LOGW(TAG, "[EVT] STA_DISCONNECTED reason=%u", disc ? disc->reason : 0);
+                if (s_auto_reconnect && s_has_credentials) {
+                    wifi_service_request_saved_reconnect();
+                    break;
+                }
+
+                memset(s_connected_ssid, 0, sizeof(s_connected_ssid));
+                set_state(WIFI_STATE_DISCONNECTED, NULL);
+                break;
+            }
+
+            case WIFI_EVENT_STA_CONNECTED: {
+                wifi_event_sta_connected_t *conn = (wifi_event_sta_connected_t *)event_data;
+                if (conn) {
+                    memcpy(s_connected_ssid, conn->ssid,
+                           conn->ssid_len < sizeof(s_connected_ssid) - 1
+                               ? conn->ssid_len
+                               : sizeof(s_connected_ssid) - 1);
+                    s_connected_ssid[conn->ssid_len < sizeof(s_connected_ssid) - 1
+                                         ? conn->ssid_len
+                                         : sizeof(s_connected_ssid) - 1] = '\0';
+                }
+                ESP_LOGI(TAG, "[EVT] STA_CONNECTED ssid='%s'", s_connected_ssid);
+                set_state(WIFI_STATE_CONNECTED, s_connected_ssid);
+                break;
+            }
+
+            default:
+                break;
+        }
+    } else if (event_base == IP_EVENT) {
+        if (event_id == IP_EVENT_STA_GOT_IP) {
+            ip_event_got_ip_t *evt = (ip_event_got_ip_t *)event_data;
+            ESP_LOGI(TAG, "[EVT] GOT_IP " IPSTR, IP2STR(&evt->ip_info.ip));
+            set_state(WIFI_STATE_CONNECTED, s_connected_ssid);
+        }
+    }
 }
 
-esp_err_t wifi_service_init(void)
+// ---- Lifecycle ----
+
+void wifi_service_init(void)
 {
-	if (s_initialized) {
-		return ESP_OK;
-	}
+    if (s_initialized) {
+        ESP_LOGW(TAG, "[INIT] Already initialized");
+        return;
+    }
 
-	s_state_mutex = xSemaphoreCreateMutex();
-	if (!s_state_mutex) {
-		return ESP_ERR_NO_MEM;
-	}
+    ESP_LOGI(TAG, "[INIT] wifi_service_init()");
 
-	s_state.status = WIFI_SERVICE_STATUS_STOPPED;
-	s_state.ssid[0] = '\0';
-	s_state.ip_v4 = 0;
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
 
-	esp_err_t err = esp_netif_init();
-	if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-		return err;
-	}
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-	err = esp_event_loop_create_default();
-	if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-		return err;
-	}
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,  wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,   IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL));
 
-	if (!s_wifi_netif) {
-		s_wifi_netif = esp_netif_create_default_wifi_sta();
-		if (!s_wifi_netif) {
-			return ESP_FAIL;
-		}
-	}
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
-	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-	err = esp_wifi_init(&cfg);
-	if (err != ESP_OK) {
-		return err;
-	}
+    bool found = false;
+    if (wifi_service_load_saved_credentials(s_saved_ssid, sizeof(s_saved_ssid),
+                                            s_saved_password, sizeof(s_saved_password), &found) == ESP_OK && found) {
+        s_has_credentials = true;
+        ESP_LOGI(TAG, "[INIT] Loaded saved WiFi credentials for '%s'", s_saved_ssid);
+    } else {
+        wifi_service_clear_saved_credentials();
+    }
 
-	err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-	if (err != ESP_OK) {
-		return err;
-	}
+    bool wifi_on = true;
+    settings_get_bool("wifi_default_on", true, &wifi_on);
 
-	err = esp_event_handler_instance_register(WIFI_EVENT,
-											   ESP_EVENT_ANY_ID,
-											   &wifi_service_event_handler,
-											   NULL,
-											   &s_wifi_event_instance);
-	if (err != ESP_OK) {
-		return err;
-	}
+    if (wifi_on) {
+        ESP_ERROR_CHECK(esp_wifi_start());
+        if (s_has_credentials) {
+            s_auto_reconnect = true;
+            ESP_LOGI(TAG, "[INIT] WiFi started, waiting for saved SSID reconnect");
+        } else {
+            s_state = WIFI_STATE_IDLE;
+            s_auto_reconnect = false;
+            ESP_LOGI(TAG, "[INIT] WiFi started (default on)");
+        }
+    } else {
+        s_state = WIFI_STATE_DISABLED;
+        s_auto_reconnect = false;
+        ESP_LOGI(TAG, "[INIT] WiFi disabled by settings");
+    }
 
-	err = esp_event_handler_instance_register(IP_EVENT,
-											   IP_EVENT_STA_GOT_IP,
-											   &wifi_service_event_handler,
-											   NULL,
-											   &s_ip_event_instance);
-	if (err != ESP_OK) {
-		return err;
-	}
-
-	err = esp_wifi_set_mode(WIFI_MODE_STA);
-	if (err != ESP_OK) {
-		return err;
-	}
-
-	char ssid[33] = {0};
-	char password[65] = {0};
-	bool found = false;
-	esp_err_t load_err = wifi_service_load_credentials(ssid, sizeof(ssid), password, sizeof(password), &found);
-	if (load_err != ESP_OK) {
-		ESP_LOGW(TAG, "Failed to load credentials: %s", esp_err_to_name(load_err));
-	}
-
-	if (found && ssid[0] != '\0') {
-		s_has_credentials = true;
-		wifi_service_copy_str(s_state.ssid, sizeof(s_state.ssid), ssid);
-
-		wifi_config_t config = {0};
-		wifi_service_copy_str((char *)config.sta.ssid, sizeof(config.sta.ssid), ssid);
-		wifi_service_copy_str((char *)config.sta.password, sizeof(config.sta.password), password);
-		config.sta.threshold.authmode = WIFI_AUTH_OPEN;
-		config.sta.pmf_cfg.capable = true;
-		config.sta.pmf_cfg.required = false;
-
-		esp_err_t cfg_err = esp_wifi_set_config(WIFI_IF_STA, &config);
-		if (cfg_err != ESP_OK) {
-			ESP_LOGW(TAG, "Failed to apply saved WiFi config: %s", esp_err_to_name(cfg_err));
-		}
-	}
-
-	err = esp_wifi_start();
-	if (err != ESP_OK) {
-		return err;
-	}
-	s_enabled = true;
-
-	s_initialized = true;
-
-	if (!s_has_credentials) {
-		wifi_service_set_status(WIFI_SERVICE_STATUS_DISCONNECTED, s_state.ssid, NULL);
-	}
-
-	return ESP_OK;
+    s_initialized = true;
+    ESP_LOGI(TAG, "[INIT] wifi_service_init() complete");
 }
 
-esp_err_t wifi_service_register_callbacks(const wifi_service_callbacks_t *callbacks)
+void wifi_service_deinit(void)
 {
-	if (callbacks) {
-		s_callbacks = *callbacks;
-	} else {
-		memset(&s_callbacks, 0, sizeof(s_callbacks));
-	}
+    if (!s_initialized) {
+        return;
+    }
 
-	wifi_service_notify_status();
-	wifi_service_notify_scan_state(s_scan_running);
-	if (s_scan_count > 0) {
-		wifi_service_notify_scan_done();
-	}
-
-	return ESP_OK;
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    s_initialized = false;
+    s_state = WIFI_STATE_DISABLED;
+    s_auto_reconnect = false;
+    ESP_LOGI(TAG, "[DEINIT] wifi_service_deinit() complete");
 }
 
-esp_err_t wifi_service_set_enabled(bool enabled)
+// ---- Control ----
+
+esp_err_t wifi_service_enable(void)
 {
-	if (!s_initialized) {
-		return ESP_ERR_INVALID_STATE;
-	}
-	if (enabled == s_enabled) {
-		return ESP_OK;
-	}
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_state != WIFI_STATE_DISABLED) {
+        ESP_LOGD(TAG, "[CTRL] Already enabled");
+        return ESP_OK;
+    }
 
-	if (!enabled) {
-		esp_wifi_disconnect();
-		esp_err_t err = esp_wifi_stop();
-		s_enabled = false;
-		wifi_service_set_status(WIFI_SERVICE_STATUS_STOPPED, s_state.ssid, NULL);
-		return err;
-	}
-
-	esp_err_t err = esp_wifi_start();
-	if (err == ESP_OK) {
-		s_enabled = true;
-		wifi_service_set_status(WIFI_SERVICE_STATUS_DISCONNECTED, s_state.ssid, NULL);
-	}
-
-	return err;
+    esp_err_t err = esp_wifi_start();
+    if (err == ESP_OK) {
+        if (s_has_credentials) {
+            s_auto_reconnect = true;
+            ESP_LOGI(TAG, "[CTRL] WiFi enabled, waiting for saved SSID reconnect");
+        } else {
+            s_auto_reconnect = false;
+            set_state(WIFI_STATE_IDLE, NULL);
+        }
+        ESP_LOGI(TAG, "[CTRL] WiFi enabled");
+    } else {
+        ESP_LOGE(TAG, "[CTRL] esp_wifi_start failed: %s", esp_err_to_name(err));
+    }
+    return err;
 }
 
-bool wifi_service_is_enabled(void)
+esp_err_t wifi_service_disable(void)
 {
-	return s_enabled;
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_auto_reconnect = false;
+    esp_wifi_disconnect();
+    esp_err_t err = esp_wifi_stop();
+    if (err == ESP_OK) {
+        memset(s_connected_ssid, 0, sizeof(s_connected_ssid));
+        set_state(WIFI_STATE_DISABLED, NULL);
+        ESP_LOGI(TAG, "[CTRL] WiFi disabled");
+    } else {
+        ESP_LOGE(TAG, "[CTRL] esp_wifi_stop failed: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
+esp_err_t wifi_service_scan(void)
+{
+    if (!s_initialized || s_state == WIFI_STATE_DISABLED) {
+        ESP_LOGW(TAG, "[SCAN] WiFi not enabled");
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_state == WIFI_STATE_SCANNING) {
+        ESP_LOGD(TAG, "[SCAN] Already scanning");
+        return ESP_OK;
+    }
+
+    wifi_scan_config_t scan_cfg = {
+        .ssid        = NULL,
+        .bssid       = NULL,
+        .channel     = 0,
+        .show_hidden = false,
+        .scan_type   = WIFI_SCAN_TYPE_ACTIVE,
+    };
+
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
+    if (err == ESP_OK) {
+        set_state(WIFI_STATE_SCANNING, NULL);
+        ESP_LOGI(TAG, "[SCAN] Scan started");
+    } else {
+        ESP_LOGE(TAG, "[SCAN] esp_wifi_scan_start failed: %s", esp_err_to_name(err));
+    }
+    return err;
 }
 
 esp_err_t wifi_service_connect(const char *ssid, const char *password)
 {
-	if (!ssid || ssid[0] == '\0') {
-		return ESP_ERR_INVALID_ARG;
-	}
-	if (!s_initialized) {
-		return ESP_ERR_INVALID_STATE;
-	}
+    if (!s_initialized || s_state == WIFI_STATE_DISABLED) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!ssid) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
-	wifi_config_t config = {0};
-	wifi_service_copy_str((char *)config.sta.ssid, sizeof(config.sta.ssid), ssid);
-	if (password) {
-		wifi_service_copy_str((char *)config.sta.password, sizeof(config.sta.password), password);
-	} else {
-		config.sta.password[0] = '\0';
-	}
-	config.sta.threshold.authmode = WIFI_AUTH_OPEN;
-	config.sta.pmf_cfg.capable = true;
-	config.sta.pmf_cfg.required = false;
+    ESP_LOGI(TAG, "[CONNECT] Connecting to '%s'", ssid);
 
-	esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
-	if (err != ESP_OK) {
-		return err;
-	}
+    wifi_config_t wifi_cfg;
+    memset(&wifi_cfg, 0, sizeof(wifi_cfg));
+    snprintf((char *)wifi_cfg.sta.ssid, sizeof(wifi_cfg.sta.ssid), "%s", ssid);
+    if (password && password[0] != '\0') {
+        snprintf((char *)wifi_cfg.sta.password, sizeof(wifi_cfg.sta.password), "%s", password);
+    }
+    wifi_cfg.sta.threshold.authmode = (password && password[0] != '\0')
+                                          ? WIFI_AUTH_WPA2_PSK
+                                          : WIFI_AUTH_OPEN;
 
-	esp_err_t save_err = wifi_service_save_credentials(ssid, password ? password : "");
-	if (save_err == ESP_OK) {
-		s_has_credentials = true;
-		wifi_service_copy_str(s_state.ssid, sizeof(s_state.ssid), ssid);
-	} else {
-		ESP_LOGW(TAG, "Failed to save credentials: %s", esp_err_to_name(save_err));
-	}
+    esp_wifi_disconnect();
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[CONNECT] esp_wifi_set_config failed: %s", esp_err_to_name(err));
+        return err;
+    }
 
-	wifi_service_set_status(WIFI_SERVICE_STATUS_CONNECTING, ssid, NULL);
+    esp_err_t save_err = wifi_service_save_credentials(ssid, password ? password : "");
+    if (save_err != ESP_OK) {
+        ESP_LOGW(TAG, "[CONNECT] Failed to save credentials: %s", esp_err_to_name(save_err));
+    }
 
-	if (!s_enabled) {
-		err = esp_wifi_start();
-		if (err == ESP_OK) {
-			s_enabled = true;
-			return ESP_OK;
-		}
-		return err;
-	}
-
-	return esp_wifi_connect();
-}
-
-esp_err_t wifi_service_connect_saved(void)
-{
-	char ssid[33] = {0};
-	char password[65] = {0};
-	bool found = false;
-	esp_err_t err = wifi_service_load_credentials(ssid, sizeof(ssid), password, sizeof(password), &found);
-	if (err != ESP_OK) {
-		return err;
-	}
-	if (!found || ssid[0] == '\0') {
-		return ESP_ERR_INVALID_STATE;
-	}
-
-	return wifi_service_connect(ssid, password);
+    err = esp_wifi_connect();
+    if (err == ESP_OK) {
+        set_state(WIFI_STATE_CONNECTING, ssid);
+        s_auto_reconnect = true;
+    } else {
+        ESP_LOGE(TAG, "[CONNECT] esp_wifi_connect failed: %s", esp_err_to_name(err));
+        set_state(WIFI_STATE_CONNECT_FAILED, ssid);
+    }
+    return err;
 }
 
 esp_err_t wifi_service_disconnect(void)
 {
-	if (!s_initialized) {
-		return ESP_ERR_INVALID_STATE;
-	}
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-	esp_err_t err = esp_wifi_disconnect();
-	wifi_service_set_status(WIFI_SERVICE_STATUS_DISCONNECTED, s_state.ssid, NULL);
-	return err;
+    s_auto_reconnect = false;
+    esp_err_t err = esp_wifi_disconnect();
+    if (err == ESP_OK) {
+        memset(s_connected_ssid, 0, sizeof(s_connected_ssid));
+        set_state(WIFI_STATE_DISCONNECTED, NULL);
+        ESP_LOGI(TAG, "[CTRL] Disconnected");
+    }
+    return err;
 }
 
-esp_err_t wifi_service_scan_start(void)
+// ---- State queries ----
+
+wifi_state_t wifi_service_get_state(void)
 {
-
-	if (!s_initialized || !s_enabled || !s_sta_started) {
-		return ESP_ERR_INVALID_STATE;
-	}
-	if (s_scan_running) {
-		return ESP_ERR_INVALID_STATE;
-	}
-
-	wifi_scan_config_t scan_cfg = {0};
-	scan_cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
-	scan_cfg.scan_time.active.min = 100;
-	scan_cfg.scan_time.active.max = 300;
-	scan_cfg.show_hidden = false;
-
-	s_scan_running = true;
-	wifi_service_notify_scan_state(true);
-
-	esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
-	if (err != ESP_OK) {
-		s_scan_running = false;
-		wifi_service_notify_scan_state(false);
-	}
-
-	return err;
-}
-
-bool wifi_service_has_credentials(void)
-{
-	return s_has_credentials;
-}
-
-esp_err_t wifi_service_forget_credentials(void)
-{
-	nvs_handle_t handle;
-	esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
-	if (err == ESP_ERR_NVS_NOT_FOUND) {
-		s_has_credentials = false;
-		s_state.ssid[0] = '\0';
-		return ESP_OK;
-	}
-	if (err != ESP_OK) {
-		return err;
-	}
-
-	nvs_erase_key(handle, WIFI_SERVICE_NVS_KEY_SSID);
-	nvs_erase_key(handle, WIFI_SERVICE_NVS_KEY_PASS);
-	err = nvs_commit(handle);
-	nvs_close(handle);
-
-	s_has_credentials = false;
-	s_state.ssid[0] = '\0';
-	return err;
-}
-
-esp_err_t wifi_service_get_state(wifi_service_state_t *out_state)
-{
-	if (!out_state) {
-		return ESP_ERR_INVALID_ARG;
-	}
-
-	wifi_service_lock();
-	*out_state = s_state;
-	wifi_service_unlock();
-
-	return ESP_OK;
-}
-
-#else
-
-#include "esp_log.h"
-
-static const char *TAG = "wifi_service";
-static wifi_service_state_t s_state = {
-	.status = WIFI_SERVICE_STATUS_STOPPED,
-	.ssid = {0},
-	.ip_v4 = 0
-};
-static wifi_service_callbacks_t s_callbacks;
-
-static void wifi_service_notify_status(void)
-{
-	if (s_callbacks.on_status) {
-		s_callbacks.on_status(&s_state, s_callbacks.user_ctx);
-	}
-}
-
-static void wifi_service_notify_scan_state(bool scanning)
-{
-	if (s_callbacks.on_scan_state) {
-		s_callbacks.on_scan_state(scanning, s_callbacks.user_ctx);
-	}
-}
-
-static void wifi_service_notify_scan_done(void)
-{
-	if (s_callbacks.on_scan_done) {
-		s_callbacks.on_scan_done(NULL, 0, s_callbacks.user_ctx);
-	}
-}
-
-esp_err_t wifi_service_init(void)
-{
-	ESP_LOGW(TAG, "WiFi is not enabled in sdkconfig for this target");
-	wifi_service_notify_status();
-	return ESP_ERR_NOT_SUPPORTED;
-}
-
-esp_err_t wifi_service_register_callbacks(const wifi_service_callbacks_t *callbacks)
-{
-	if (callbacks) {
-		s_callbacks = *callbacks;
-	} else {
-		memset(&s_callbacks, 0, sizeof(s_callbacks));
-	}
-
-	wifi_service_notify_status();
-	wifi_service_notify_scan_state(false);
-	wifi_service_notify_scan_done();
-	return ESP_OK;
-}
-
-esp_err_t wifi_service_set_enabled(bool enabled)
-{
-	(void)enabled;
-	s_state.status = WIFI_SERVICE_STATUS_STOPPED;
-	wifi_service_notify_status();
-	return ESP_ERR_NOT_SUPPORTED;
+    return s_state;
 }
 
 bool wifi_service_is_enabled(void)
 {
-	return false;
+    return s_state != WIFI_STATE_DISABLED;
 }
 
-esp_err_t wifi_service_connect(const char *ssid, const char *password)
+bool wifi_service_is_connected(void)
 {
-	(void)ssid;
-	(void)password;
-	return ESP_ERR_NOT_SUPPORTED;
+    return s_state == WIFI_STATE_CONNECTED;
+}
+
+const char *wifi_service_get_connected_ssid(void)
+{
+    if (!wifi_service_is_connected()) {
+        return NULL;
+    }
+    return s_connected_ssid;
 }
 
 esp_err_t wifi_service_connect_saved(void)
 {
-	return ESP_ERR_NOT_SUPPORTED;
-}
+    if (!s_initialized || s_state == WIFI_STATE_DISABLED) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-esp_err_t wifi_service_disconnect(void)
-{
-	return ESP_ERR_NOT_SUPPORTED;
-}
-
-esp_err_t wifi_service_scan_start(void)
-{
-	return ESP_ERR_NOT_SUPPORTED;
-}
-
-bool wifi_service_has_credentials(void)
-{
-	return false;
+    esp_err_t err = wifi_service_apply_saved_credentials();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "[CONNECT] Connecting to saved SSID '%s'", s_saved_ssid);
+    } else if (err == ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "[CONNECT] No saved WiFi credentials available");
+    }
+    return err;
 }
 
 esp_err_t wifi_service_forget_credentials(void)
 {
-	return ESP_ERR_NOT_SUPPORTED;
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(WIFI_SERVICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        wifi_service_clear_saved_credentials();
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    bool erased = false;
+
+    err = nvs_erase_key(handle, WIFI_SERVICE_NVS_KEY_SSID);
+    if (err == ESP_OK) {
+        erased = true;
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return err;
+    }
+
+    esp_err_t pass_err = nvs_erase_key(handle, WIFI_SERVICE_NVS_KEY_PASS);
+    if (pass_err == ESP_OK) {
+        erased = true;
+    } else if (pass_err != ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return pass_err;
+    }
+
+    if (erased) {
+        err = nvs_commit(handle);
+    } else {
+        err = ESP_OK;
+    }
+
+    nvs_close(handle);
+    wifi_service_clear_saved_credentials();
+    return err;
 }
 
-esp_err_t wifi_service_get_state(wifi_service_state_t *out_state)
+bool wifi_service_has_credentials(void)
 {
-	if (!out_state) {
-		return ESP_ERR_INVALID_ARG;
-	}
-	*out_state = s_state;
-	return ESP_OK;
+    return s_has_credentials;
 }
 
-#endif
+// ---- Callbacks ----
+
+void wifi_service_set_scan_done_cb(wifi_scan_done_cb_t cb)
+{
+    s_scan_done_cb = cb;
+}
+
+void wifi_service_set_state_changed_cb(wifi_state_changed_cb_t cb)
+{
+    s_state_changed_cb = cb;
+}
