@@ -14,9 +14,12 @@ typedef struct
     uint8_t brightness_percent;
 } app_settings_t;
 
-#define SETTINGS_KEY_DARK_MODE "dark_mode_enabled"
-#define SETTINGS_KEY_BRIGHTNESS "brightness_percent"
-#define SETTINGS_KEY_SHOW_ZH "show_chinese_definition"
+#define SETTINGS_KEY_DARK_MODE "dark_mode"
+#define SETTINGS_KEY_BRIGHTNESS "brightness"
+#define SETTINGS_KEY_SHOW_ZH "show_zh"
+#define SETTINGS_KEY_WIFI "wifi_on"
+#define SETTINGS_KEY_FALLBACK "fallback_en"
+#define SETTINGS_KEY_HISTORY "history"
 
 esp_err_t settings_init(void);
 esp_err_t settings_load(app_settings_t *out);

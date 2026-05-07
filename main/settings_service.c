@@ -31,16 +31,16 @@ static bool *settings_get_bool_field(const char *key)
         return NULL;
     }
 
-    if (strcmp(key, "wifi_default_on") == 0) {
+    if (strcmp(key, SETTINGS_KEY_WIFI) == 0) {
         return &s_cached.wifi_default_on;
     }
-    if (strcmp(key, "online_fallback_enabled") == 0) {
+    if (strcmp(key, SETTINGS_KEY_FALLBACK) == 0) {
         return &s_cached.online_fallback_enabled;
     }
-    if (strcmp(key, "show_chinese_definition") == 0) {
+    if (strcmp(key, SETTINGS_KEY_SHOW_ZH) == 0) {
         return &s_cached.show_chinese_definition;
     }
-    if (strcmp(key, "save_history") == 0) {
+    if (strcmp(key, SETTINGS_KEY_HISTORY) == 0) {
         return &s_cached.save_history;
     }
     if (strcmp(key, SETTINGS_KEY_DARK_MODE) == 0) {
@@ -100,29 +100,29 @@ static esp_err_t settings_load_from_nvs(app_settings_t *settings)
     }
 
     uint8_t value = 0;
-    if (nvs_get_u8(handle, "wifi_default_on", &value) == ESP_OK) {
-        settings_apply_nvs_value("wifi_default_on", value);
-        ESP_LOGD(TAG, "[NVS] wifi_default_on=%u", value);
+    if (nvs_get_u8(handle, SETTINGS_KEY_WIFI, &value) == ESP_OK) {
+        settings_apply_nvs_value(SETTINGS_KEY_WIFI, value);
+        ESP_LOGD(TAG, "[NVS] wifi_on=%u", value);
     }
-    if (nvs_get_u8(handle, "online_fallback_enabled", &value) == ESP_OK) {
-        settings_apply_nvs_value("online_fallback_enabled", value);
-        ESP_LOGD(TAG, "[NVS] online_fallback_enabled=%u", value);
+    if (nvs_get_u8(handle, SETTINGS_KEY_FALLBACK, &value) == ESP_OK) {
+        settings_apply_nvs_value(SETTINGS_KEY_FALLBACK, value);
+        ESP_LOGD(TAG, "[NVS] fallback_en=%u", value);
     }
-    if (nvs_get_u8(handle, "show_chinese_definition", &value) == ESP_OK) {
-        settings_apply_nvs_value("show_chinese_definition", value);
-        ESP_LOGD(TAG, "[NVS] show_chinese_definition=%u", value);
+    if (nvs_get_u8(handle, SETTINGS_KEY_SHOW_ZH, &value) == ESP_OK) {
+        settings_apply_nvs_value(SETTINGS_KEY_SHOW_ZH, value);
+        ESP_LOGD(TAG, "[NVS] show_zh=%u", value);
     }
-    if (nvs_get_u8(handle, "save_history", &value) == ESP_OK) {
-        settings_apply_nvs_value("save_history", value);
-        ESP_LOGD(TAG, "[NVS] save_history=%u", value);
+    if (nvs_get_u8(handle, SETTINGS_KEY_HISTORY, &value) == ESP_OK) {
+        settings_apply_nvs_value(SETTINGS_KEY_HISTORY, value);
+        ESP_LOGD(TAG, "[NVS] history=%u", value);
     }
     if (nvs_get_u8(handle, SETTINGS_KEY_DARK_MODE, &value) == ESP_OK) {
         settings_apply_nvs_value(SETTINGS_KEY_DARK_MODE, value);
-        ESP_LOGD(TAG, "[NVS] dark_mode_enabled=%u", value);
+        ESP_LOGD(TAG, "[NVS] dark_mode=%u", value);
     }
     if (nvs_get_u8(handle, SETTINGS_KEY_BRIGHTNESS, &value) == ESP_OK) {
         settings_apply_nvs_u8_value(SETTINGS_KEY_BRIGHTNESS, value);
-        ESP_LOGD(TAG, "[NVS] brightness_percent=%u", value);
+        ESP_LOGD(TAG, "[NVS] brightness=%u", value);
     }
 
     nvs_close(handle);
@@ -146,29 +146,29 @@ static esp_err_t settings_save_to_nvs(const app_settings_t *settings)
         return err;
     }
 
-    err = nvs_set_u8(handle, "wifi_default_on", settings->wifi_default_on ? 1 : 0);
+    err = nvs_set_u8(handle, SETTINGS_KEY_WIFI, settings->wifi_default_on ? 1 : 0);
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set wifi_default_on=%u", settings->wifi_default_on);
-        err = nvs_set_u8(handle, "online_fallback_enabled", settings->online_fallback_enabled ? 1 : 0);
+        ESP_LOGD(TAG, "[NVS] Set wifi_on=%u", settings->wifi_default_on);
+        err = nvs_set_u8(handle, SETTINGS_KEY_FALLBACK, settings->online_fallback_enabled ? 1 : 0);
     }
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set online_fallback_enabled=%u", settings->online_fallback_enabled);
-        err = nvs_set_u8(handle, "show_chinese_definition", settings->show_chinese_definition ? 1 : 0);
+        ESP_LOGD(TAG, "[NVS] Set fallback_en=%u", settings->online_fallback_enabled);
+        err = nvs_set_u8(handle, SETTINGS_KEY_SHOW_ZH, settings->show_chinese_definition ? 1 : 0);
     }
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set show_chinese_definition=%u", settings->show_chinese_definition);
-        err = nvs_set_u8(handle, "save_history", settings->save_history ? 1 : 0);
+        ESP_LOGD(TAG, "[NVS] Set show_zh=%u", settings->show_chinese_definition);
+        err = nvs_set_u8(handle, SETTINGS_KEY_HISTORY, settings->save_history ? 1 : 0);
     }
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set save_history=%u", settings->save_history);
+        ESP_LOGD(TAG, "[NVS] Set history=%u", settings->save_history);
         err = nvs_set_u8(handle, SETTINGS_KEY_DARK_MODE, settings->dark_mode_enabled ? 1 : 0);
     }
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set dark_mode_enabled=%u", settings->dark_mode_enabled);
+        ESP_LOGD(TAG, "[NVS] Set dark_mode=%u", settings->dark_mode_enabled);
         err = nvs_set_u8(handle, SETTINGS_KEY_BRIGHTNESS, settings->brightness_percent);
     }
     if (err == ESP_OK) {
-        ESP_LOGD(TAG, "[NVS] Set brightness_percent=%u", settings->brightness_percent);
+        ESP_LOGD(TAG, "[NVS] Set brightness=%u", settings->brightness_percent);
         err = nvs_commit(handle);
     }
     
@@ -187,12 +187,20 @@ static esp_err_t settings_write_bool_key(const char *key, bool value)
     nvs_handle_t handle;
     esp_err_t err = nvs_open(SETTINGS_NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[NVS] Failed to open namespace for key '%s': %s", key, esp_err_to_name(err));
         return err;
     }
 
     err = nvs_set_u8(handle, key, value ? 1 : 0);
     if (err == ESP_OK) {
         err = nvs_commit(handle);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "[NVS] Successfully saved bool key '%s' = %u", key, value ? 1 : 0);
+        } else {
+            ESP_LOGE(TAG, "[NVS] Commit failed for key '%s': %s", key, esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGE(TAG, "[NVS] nvs_set_u8 failed for key '%s': %s", key, esp_err_to_name(err));
     }
 
     nvs_close(handle);
@@ -204,12 +212,20 @@ static esp_err_t settings_write_u8_key(const char *key, uint8_t value)
     nvs_handle_t handle;
     esp_err_t err = nvs_open(SETTINGS_NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[NVS] Failed to open namespace for key '%s': %s", key, esp_err_to_name(err));
         return err;
     }
 
     err = nvs_set_u8(handle, key, value);
     if (err == ESP_OK) {
         err = nvs_commit(handle);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "[NVS] Successfully saved u8 key '%s' = %u", key, value);
+        } else {
+            ESP_LOGE(TAG, "[NVS] Commit failed for key '%s': %s", key, esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGE(TAG, "[NVS] nvs_set_u8 failed for key '%s': %s", key, esp_err_to_name(err));
     }
 
     nvs_close(handle);
@@ -221,11 +237,15 @@ esp_err_t settings_init(void)
     ESP_LOGI(TAG, "[INIT] settings_init()");
     
     settings_apply_defaults(&s_cached);
-    ESP_LOGD(TAG, "[INIT] Defaults applied");
+    ESP_LOGD(TAG, "[INIT] Defaults applied - dark_mode=%u, brightness=%u, show_zh=%u", 
+             s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition);
     
     esp_err_t err = settings_load_from_nvs(&s_cached);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "[INIT] NVS load failed: %s, using defaults", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "[INIT] Settings loaded from NVS - dark_mode=%u, brightness=%u, show_zh=%u",
+                 s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition);
     }
     
     s_initialized = true;

@@ -174,14 +174,37 @@ static void create_keyboard(void)
 
 void ui_overlays_init(void)
 {
+    ESP_LOGI(TAG, "[INIT] ui_overlays_init() - Applying saved settings");
+    
     bool dark_mode = false;
-    settings_get_bool(SETTINGS_KEY_DARK_MODE, false, &dark_mode);
+    esp_err_t err = settings_get_bool(SETTINGS_KEY_DARK_MODE, false, &dark_mode);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "[INIT] Loaded dark_mode from settings: %u", dark_mode);
+    } else {
+        ESP_LOGW(TAG, "[INIT] Failed to load dark_mode, using default: false");
+    }
     settings_ui_apply_theme(dark_mode);
     ui_overlays_apply_theme(dark_mode);
 
     uint8_t brightness = 100;
-    settings_get_u8(SETTINGS_KEY_BRIGHTNESS, 100, &brightness);
-    bsp_display_brightness_set((int)brightness);
+    err = settings_get_u8(SETTINGS_KEY_BRIGHTNESS, 100, &brightness);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "[INIT] Loaded brightness from settings: %u%%", brightness);
+    } else {
+        ESP_LOGW(TAG, "[INIT] Failed to load brightness, using default: 100%%");
+    }
+    int set_err = bsp_display_brightness_set((int)brightness);
+    if (set_err != 0) {
+        ESP_LOGE(TAG, "[INIT] Failed to apply brightness: %d", set_err);
+    }
+
+    bool show_zh = true;
+    err = settings_get_bool(SETTINGS_KEY_SHOW_ZH, true, &show_zh);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "[INIT] Loaded show_chinese_definition from settings: %u", show_zh);
+    } else {
+        ESP_LOGW(TAG, "[INIT] Failed to load show_chinese_definition, using default: true");
+    }
 
     settings_ui_build(objects.settings_cont);
     create_status_bar();
