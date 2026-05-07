@@ -14,7 +14,7 @@
       "displayWidth": 480,
       "displayHeight": 800,
       "displayBorderRadius": 0,
-      "darkTheme": false,
+      "darkTheme": true,
       "colorFormat": "BGR",
       "resourceFiles": [],
       "hiddenWidgetLines": "dimmed",

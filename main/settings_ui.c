@@ -4,10 +4,14 @@
 #include "bsp/display.h"
 #include "screen_manager.h"
 #include "settings_service.h"
+#include "geolocation_service.h"
+#include "timezone_data.h"
+#include "clock_service.h"
 #include "ui_overlays.h"
 #include "ui/ui.h"
 #include "ui_helpers.h"
 #include "esp_log.h"
+#include "esp_err.h"
 
 static const char *TAG = "settings_ui";
 
@@ -221,7 +225,12 @@ lv_obj_t *settings_create_dropdown_row(lv_obj_t *parent,
     lv_obj_t *dd = lv_dropdown_create(row);
     lv_dropdown_set_options(dd, options);
     lv_dropdown_set_selected(dd, selected);
-    lv_obj_set_width(dd, 140);
+    lv_obj_set_width(dd, 220);
+    lv_obj_set_style_text_font(dd, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *list = lv_dropdown_get_list(dd);
+    if (list) {
+        lv_obj_set_style_text_font(list, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
 
     ui_bind_event(dd, cb, LV_EVENT_VALUE_CHANGED, user_data);
     return dd;
@@ -321,6 +330,38 @@ static void settings_show_zh_cb(lv_event_t *event)
     lv_async_call(settings_rebuild_async, objects.settings_cont);
 }
 
+static void settings_timezone_detect_async(void *user_data)
+{
+    (void)user_data;
+    geolocation_service_detect_timezone();
+}
+
+static void settings_timezone_cb(lv_event_t *event)
+{
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
+        return;
+    }
+
+    lv_obj_t *dd = lv_event_get_target(event);
+    uint16_t selected = lv_dropdown_get_selected(dd);
+    uint8_t tz_index = (uint8_t)selected;
+
+    ESP_LOGI(TAG, "[UI] Timezone selected dropdown=%u -> tz_index=%u (%s)", selected, tz_index, timezone_get_name(tz_index));
+    
+    // Save timezone to settings
+    esp_err_t err = settings_set_u8(SETTINGS_KEY_TIMEZONE, tz_index);
+    if (err == ESP_OK) {
+        if (tz_index == TIMEZONE_INDEX_AUTO) {
+            lv_async_call(settings_timezone_detect_async, NULL);
+        } else {
+            // Update clock display immediately
+            clock_service_notify_time_synced();
+        }
+    } else {
+        ESP_LOGE(TAG, "[UI] Failed to save timezone: %s", esp_err_to_name(err));
+    }
+}
+
 void settings_ui_build(lv_obj_t *parent) {
     if (!parent) {
         return;
@@ -359,6 +400,32 @@ void settings_ui_build(lv_obj_t *parent) {
                                brightness,
                                settings_brightness_cb,
                                NULL);
+
+    settings_create_section_title(parent, "System");
+    // Build timezone dropdown options dynamically
+    uint8_t tz_count = timezone_get_count();
+    char tz_options[2048] = {0};
+    int tz_opt_len = 0;
+    
+    // Add AUTO option
+    tz_opt_len += snprintf(&tz_options[tz_opt_len], sizeof(tz_options) - tz_opt_len, "%s", timezone_get_name(TIMEZONE_INDEX_AUTO));
+    
+    // Add manual timezone options
+    for (uint8_t i = 0; i < tz_count && tz_opt_len < sizeof(tz_options) - 50; i++) {
+        tz_opt_len += snprintf(&tz_options[tz_opt_len], sizeof(tz_options) - tz_opt_len, "\n%s", timezone_get_name(i + 1));
+    }
+    
+    uint8_t current_tz = TIMEZONE_INDEX_AUTO;
+    settings_get_u8(SETTINGS_KEY_TIMEZONE, TIMEZONE_INDEX_AUTO, &current_tz);
+    uint16_t selected_tz = current_tz;
+    
+    settings_create_dropdown_row(parent,
+                                 "Timezone",
+                                 "Set your timezone (Auto or manual)",
+                                 tz_options,
+                                 selected_tz,
+                                 settings_timezone_cb,
+                                 NULL);
 
     settings_create_section_title(parent, "Dictionary");
     bool show_zh = true;

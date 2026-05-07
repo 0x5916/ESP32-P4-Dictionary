@@ -12,6 +12,7 @@ typedef struct
     bool save_history;
     bool dark_mode_enabled;
     uint8_t brightness_percent;
+    uint8_t timezone_index;
 } app_settings_t;
 
 #define SETTINGS_KEY_DARK_MODE "dark_mode"
@@ -20,6 +21,7 @@ typedef struct
 #define SETTINGS_KEY_WIFI "wifi_on"
 #define SETTINGS_KEY_FALLBACK "fallback_en"
 #define SETTINGS_KEY_HISTORY "history"
+#define SETTINGS_KEY_TIMEZONE "timezone"
 
 esp_err_t settings_init(void);
 esp_err_t settings_load(app_settings_t *out);

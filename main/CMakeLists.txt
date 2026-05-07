@@ -18,6 +18,8 @@ idf_component_register(
         settings_service.c
         settings_ui.c
         clock_service.c
+        timezone_data.c
+        geolocation_service.c
 
         ui/ui.c
         ui/styles.c

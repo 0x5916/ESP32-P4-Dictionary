@@ -6,6 +6,8 @@
 #include "ui_overlays.h"
 #include "ui_events.h"
 #include "wifi_service.h"
+#include "clock_service.h"
+#include "geolocation_service.h"
 #include "nvs_flash.h"
 #include "settings_service.h"
 
@@ -35,6 +37,14 @@ void app_main(void)
     ESP_LOGD(TAG, "[INIT] Initializing settings");
     settings_init();
     ESP_LOGI(TAG, "[INIT] Settings loaded");
+    
+    ESP_LOGD(TAG, "[INIT] Initializing clock service");
+    clock_service_init();
+    ESP_LOGI(TAG, "[INIT] Clock service initialized");
+    
+    ESP_LOGD(TAG, "[INIT] Initializing geolocation service");
+    geolocation_service_init();
+    ESP_LOGI(TAG, "[INIT] Geolocation service initialized");
     
     ESP_LOGI(TAG, "[TASK] WiFi task starting");
     wifi_service_init();

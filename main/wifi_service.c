@@ -7,6 +7,8 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "settings_service.h"
+#include "clock_service.h"
+#include "geolocation_service.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +36,18 @@ static wifi_state_changed_cb_t s_state_changed_cb = NULL;
 static void set_state(wifi_state_t new_state, const char *ssid)
 {
     s_state = new_state;
+    
+    // Start time sync when connected, stop when disconnected
+    if (new_state == WIFI_STATE_CONNECTED) {
+        clock_service_start_sntp();
+        // Detect timezone from IP geolocation (if in AUTO mode)
+        geolocation_service_detect_timezone();
+    } else if (new_state == WIFI_STATE_DISCONNECTED || 
+               new_state == WIFI_STATE_DISABLED ||
+               new_state == WIFI_STATE_CONNECT_FAILED) {
+        clock_service_stop_sntp();
+    }
+    
     if (s_state_changed_cb) {
         s_state_changed_cb(new_state, ssid);
     }

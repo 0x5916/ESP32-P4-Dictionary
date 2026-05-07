@@ -1,4 +1,5 @@
 #include "settings_service.h"
+#include "timezone_data.h"
 
 #include "nvs.h"
 #include "esp_log.h"
@@ -21,8 +22,9 @@ static void settings_apply_defaults(app_settings_t *settings)
     settings->online_fallback_enabled = true;
     settings->show_chinese_definition = true;
     settings->save_history = true;
-    settings->dark_mode_enabled = false;
+    settings->dark_mode_enabled = true;
     settings->brightness_percent = 100;
+    settings->timezone_index = TIMEZONE_INDEX_AUTO;
 }
 
 static bool *settings_get_bool_field(const char *key)
@@ -58,6 +60,9 @@ static uint8_t *settings_get_u8_field(const char *key)
 
     if (strcmp(key, SETTINGS_KEY_BRIGHTNESS) == 0) {
         return &s_cached.brightness_percent;
+    }
+    if (strcmp(key, SETTINGS_KEY_TIMEZONE) == 0) {
+        return &s_cached.timezone_index;
     }
 
     return NULL;
@@ -124,6 +129,10 @@ static esp_err_t settings_load_from_nvs(app_settings_t *settings)
         settings_apply_nvs_u8_value(SETTINGS_KEY_BRIGHTNESS, value);
         ESP_LOGD(TAG, "[NVS] brightness=%u", value);
     }
+    if (nvs_get_u8(handle, SETTINGS_KEY_TIMEZONE, &value) == ESP_OK) {
+        settings_apply_nvs_u8_value(SETTINGS_KEY_TIMEZONE, value);
+        ESP_LOGD(TAG, "[NVS] timezone=%u", value);
+    }
 
     nvs_close(handle);
     ESP_LOGI(TAG, "[NVS] Settings loaded from NVS successfully");
@@ -169,6 +178,10 @@ static esp_err_t settings_save_to_nvs(const app_settings_t *settings)
     }
     if (err == ESP_OK) {
         ESP_LOGD(TAG, "[NVS] Set brightness=%u", settings->brightness_percent);
+        err = nvs_set_u8(handle, SETTINGS_KEY_TIMEZONE, settings->timezone_index);
+    }
+    if (err == ESP_OK) {
+        ESP_LOGD(TAG, "[NVS] Set timezone=%u", settings->timezone_index);
         err = nvs_commit(handle);
     }
     
