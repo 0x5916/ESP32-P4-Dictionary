@@ -226,10 +226,10 @@ lv_obj_t *settings_create_dropdown_row(lv_obj_t *parent,
     lv_dropdown_set_options(dd, options);
     lv_dropdown_set_selected(dd, selected);
     lv_obj_set_width(dd, 220);
-    lv_obj_set_style_text_font(dd, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(dd, &lv_font_montserrat_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_t *list = lv_dropdown_get_list(dd);
     if (list) {
-        lv_obj_set_style_text_font(list, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_font(list, &lv_font_montserrat_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
 
     ui_bind_event(dd, cb, LV_EVENT_VALUE_CHANGED, user_data);

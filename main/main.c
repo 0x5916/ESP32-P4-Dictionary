@@ -52,7 +52,15 @@ void app_main(void)
 
     ESP_LOGD(TAG, "[INIT] Starting display");
     bsp_display_cfg_t cfg = {
-        .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
+        .lv_adapter_cfg = {
+            .task_stack_size = ESP_LV_ADAPTER_DEFAULT_STACK_SIZE,
+            .task_priority = ESP_LV_ADAPTER_DEFAULT_TASK_PRIORITY,
+            .task_core_id = ESP_LV_ADAPTER_DEFAULT_TASK_CORE_ID,
+            .tick_period_ms = ESP_LV_ADAPTER_DEFAULT_TICK_PERIOD_MS,
+            .task_min_delay_ms = 1,
+            .task_max_delay_ms = 33,
+            .stack_in_psram = false,
+        },
         .rotation = ESP_LV_ADAPTER_ROTATE_0,
         .tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_PARTIAL,
         .touch_flags = {
