@@ -10,6 +10,7 @@
 #include "geolocation_service.h"
 #include "nvs_flash.h"
 #include "settings_service.h"
+#include "dict_spellcheck.h"
 
 static const char *TAG = "main";
 
@@ -82,6 +83,14 @@ void app_main(void)
     ESP_LOGI(TAG, "[TASK] UI events initialized");
     bsp_display_unlock();
     ESP_LOGI(TAG, "[INIT] UI initialized");
+
+    ESP_LOGD(TAG, "[INIT] Initializing spellcheck engine");
+    esp_err_t sc_err = dict_spellcheck_init();
+    if (sc_err == ESP_OK) {
+        ESP_LOGI(TAG, "[INIT] Spellcheck engine initialized");
+    } else {
+        ESP_LOGW(TAG, "[INIT] Spellcheck engine failed to initialize: %s (suggestions disabled)", esp_err_to_name(sc_err));
+    }
 
     ESP_LOGI(TAG, "[INIT] Initialization complete");
 }

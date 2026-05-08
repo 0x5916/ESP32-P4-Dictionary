@@ -28,6 +28,9 @@ void ui_events_init(void)
     ESP_LOGD(TAG, "[BIND] Binding wifi<->settings swipe back");
     ui_overlays_bind_swipe_back(objects.wi_fi, objects.settings);
 
+    ESP_LOGD(TAG, "[BIND] Binding definition<->search swipe back");
+    ui_overlays_bind_swipe_back(objects.definition, objects.search);
+
     ESP_LOGD(TAG, "[BIND] Initializing WiFi UI");
     wifi_ui_init();
     

@@ -1,29 +1,36 @@
 #pragma once
 #include "dict.h"
 #include <esp_err.h>
-
-void dict_manager_init(void);
+#include <stdbool.h>
 
 /**
- * @brief  Initialize the HTTP client and response buffer.
+ * @brief Callback invoked on the LVGL task when a lookup completes.
+ *
+ * @param entry   Parsed entry (valid only when success=true)
+ * @param success true if the word was found and parsed successfully
+ */
+typedef void (*dict_lookup_result_cb_t)(const dict_entry_t *entry, bool success);
+
+/**
+ * @brief  Initialize the dictionary lookup module.
  *         Call once in app_main() before any lookup.
  */
 esp_err_t dict_lookup_init(void);
 
 /**
- * @brief  Fetch and parse the dictionary entry for `word`.
- *         Checks cache first. Falls back to HTTP if not cached.
- *
- * @param  word        Null-terminated search word (max 63 chars)
- * @param  out_entry   Caller-allocated struct to populate
- * @return ESP_OK on success
- *         ESP_ERR_NOT_FOUND if word not in dictionary
- *         ESP_FAIL on network or parse error
+ * @brief  Register a callback to receive lookup results on the LVGL task.
  */
-esp_err_t dict_lookup(const char *word, dict_entry_t *out_entry);
+void dict_lookup_set_result_cb(dict_lookup_result_cb_t cb);
+
+/**
+ * @brief  Fetch dictionary entry for `word` from the Free Dictionary API.
+ *         Runs HTTP request on a background task; result delivered via callback.
+ *
+ * @param  word  Null-terminated search word
+ */
+void dict_lookup_word(const char *word);
 
 /**
  * @brief  Free any resources held by the lookup module.
- *         Call on shutdown or before sleep.
  */
 void dict_lookup_deinit(void);

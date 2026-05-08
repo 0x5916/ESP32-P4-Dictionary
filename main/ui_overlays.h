@@ -10,3 +10,11 @@ void ui_overlays_set_time_text(const char *text);
 void ui_overlays_set_wifi_text(const char *text);
 void ui_overlays_apply_theme(bool dark_mode);
 void ui_overlays_bind_swipe_back(lv_obj_t *screen, lv_obj_t *target_screen);
+
+/**
+ * @brief Open the Definition screen for a word.
+ *        Navigates to the screen and triggers an HTTP lookup.
+ *
+ * @param word  Null-terminated word to look up
+ */
+void ui_overlays_open_definition(const char *word);

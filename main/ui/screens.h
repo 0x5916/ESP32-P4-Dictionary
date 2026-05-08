@@ -40,6 +40,7 @@ typedef struct _objects_t {
     lv_obj_t *wi_fi_network_lst;
     lv_obj_t *wi_fi_load_spinner;
     lv_obj_t *wifi_scan_btn;
+    lv_obj_t *definition_cont;
 } objects_t;
 
 extern objects_t objects;
