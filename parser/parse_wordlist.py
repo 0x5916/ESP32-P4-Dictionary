@@ -1,6 +1,8 @@
 import struct
 import math
 
+# dataset is from https://github.com/hackerb9/gwordlist/blob/master/frequency-alpha-alldicts.txt
+
 RECORD_SIZE = 16 + 3  # 16 bytes for word (padded), 1 byte for length, 2 bytes for rank
 INPUT  = "frequency-alpha-alldicts.txt"
 OUTPUT = "wordlist.bin"

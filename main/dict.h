@@ -20,6 +20,10 @@ typedef struct {
 
 typedef struct {
     char ipa[64];
+    char dialect[8];   /* "US", "UK", "General American", etc. */
+} dict_pronunciation_t;
+
+typedef struct {
     char pos[16];
     char definition[512];
     char definition_zh[256];
@@ -27,7 +31,15 @@ typedef struct {
 } dict_sense_t;
 
 typedef struct {
-    char keyword[32];
+    char pos[16];                              /* "noun", "verb", etc. */
+    uint8_t pron_count;                       /* number of pronunciations for this PoS */
+    dict_pronunciation_t pronunciations[4];   /* pronunciations specific to this PoS */
     uint8_t sense_count;
     dict_sense_t senses[8];
+} dict_pos_group_t;
+
+typedef struct {
+    char keyword[32];
+    uint8_t pos_count;
+    dict_pos_group_t pos_groups[4];            /* each group has its own pronunciations */
 } dict_entry_t;

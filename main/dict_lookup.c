@@ -111,13 +111,11 @@ static bool parse_response(const char *json, dict_entry_t *out)
         return false;
     }
 
-    char ipa_buf[64] = {0};
-    bool ipa_set = false;
-    out->sense_count = 0;
+    out->pos_count = 0;
 
     cJSON *entry;
     cJSON_ArrayForEach(entry, entries) {
-        if (out->sense_count >= 8) break;
+        if (out->pos_count >= 4) break;
 
         /* Only English entries */
         const cJSON *lang = cJSON_GetObjectItem(entry, "language");
@@ -129,29 +127,51 @@ static bool parse_response(const char *json, dict_entry_t *out)
             }
         }
 
+        /* Get or create PoS group */
+        dict_pos_group_t *group = &out->pos_groups[out->pos_count];
+        memset(group, 0, sizeof(*group));
+
         /* partOfSpeech */
-        char pos[16] = {0};
         const cJSON *j_pos = cJSON_GetObjectItem(entry, "partOfSpeech");
         if (j_pos && j_pos->valuestring) {
-            snprintf(pos, sizeof(pos), "%s", j_pos->valuestring);
+            snprintf(group->pos, sizeof(group->pos), "%s", j_pos->valuestring);
         }
 
-        /* pronunciations — take first IPA */
-        if (!ipa_set) {
-            const cJSON *prons = cJSON_GetObjectItem(entry, "pronunciations");
-            if (prons && cJSON_IsArray(prons)) {
-                cJSON *p;
-                cJSON_ArrayForEach(p, prons) {
-                    const cJSON *ptype = cJSON_GetObjectItem(p, "type");
-                    const cJSON *ptext = cJSON_GetObjectItem(p, "text");
-                    if (ptype && ptext && ptype->valuestring &&
-                        strcmp(ptype->valuestring, "ipa") == 0 &&
-                        ptext->valuestring) {
-                        strncpy(ipa_buf, ptext->valuestring,
-                                sizeof(ipa_buf) - 1);
-                        ipa_set = true;
-                        break;
+        /* pronunciations — collect all IPA variants (US, UK, etc.) for this PoS */
+        const cJSON *prons = cJSON_GetObjectItem(entry, "pronunciations");
+        if (prons && cJSON_IsArray(prons)) {
+            cJSON *p;
+            cJSON_ArrayForEach(p, prons) {
+                if (group->pron_count >= 4) break;
+                const cJSON *ptype = cJSON_GetObjectItem(p, "type");
+                const cJSON *ptext = cJSON_GetObjectItem(p, "text");
+                if (ptype && ptext && ptype->valuestring &&
+                    strcmp(ptype->valuestring, "ipa") == 0 &&
+                    ptext->valuestring) {
+                    dict_pronunciation_t *pr = &group->pronunciations[group->pron_count];
+                    strncpy(pr->ipa, ptext->valuestring, sizeof(pr->ipa) - 1);
+                    pr->ipa[sizeof(pr->ipa) - 1] = '\0';
+                    /* Check tags for dialect info */
+                    pr->dialect[0] = '\0';
+                    const cJSON *tags = cJSON_GetObjectItem(p, "tags");
+                    if (tags && cJSON_IsArray(tags)) {
+                        const cJSON *tag = cJSON_GetArrayItem(tags, 0);
+                        if (tag && tag->valuestring) {
+                            /* Truncate long dialect names like "General American" */
+                            if (strncmp(tag->valuestring, "General American", 16) == 0) {
+                                strncpy(pr->dialect, "US", sizeof(pr->dialect) - 1);
+                            } else if (strncmp(tag->valuestring, "Received Pronunciation", 23) == 0) {
+                                strncpy(pr->dialect, "UK", sizeof(pr->dialect) - 1);
+                            } else if (strncmp(tag->valuestring, "General Australian", 19) == 0) {
+                                strncpy(pr->dialect, "AU", sizeof(pr->dialect) - 1);
+                            } else if (strncmp(tag->valuestring, "Canada", 6) == 0) {
+                                strncpy(pr->dialect, "CA", sizeof(pr->dialect) - 1);
+                            } else {
+                                strncpy(pr->dialect, tag->valuestring, sizeof(pr->dialect) - 1);
+                            }
+                        }
                     }
+                    group->pron_count++;
                 }
             }
         }
@@ -162,18 +182,10 @@ static bool parse_response(const char *json, dict_entry_t *out)
 
         cJSON *sense;
         cJSON_ArrayForEach(sense, senses) {
-            if (out->sense_count >= 8) break;
+            if (group->sense_count >= 8) break;
 
-            dict_sense_t *s = &out->senses[out->sense_count];
+            dict_sense_t *s = &group->senses[group->sense_count];
             memset(s, 0, sizeof(*s));
-
-            /* Copy IPA to every sense */
-            if (ipa_set) {
-                memcpy(s->ipa, ipa_buf, sizeof(s->ipa));
-            }
-
-            /* partOfSpeech */
-            snprintf(s->pos, sizeof(s->pos), "%s", pos);
 
             /* definition */
             const cJSON *def = cJSON_GetObjectItem(sense, "definition");
@@ -211,7 +223,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
                 }
             }
 
-            out->sense_count++;
+            group->sense_count++;
 
             /* Also parse subsenses (up to 2 per sense) */
             const cJSON *subsenses = cJSON_GetObjectItem(sense, "subsenses");
@@ -219,15 +231,10 @@ static bool parse_response(const char *json, dict_entry_t *out)
                 cJSON *sub;
                 int sub_count = 0;
                 cJSON_ArrayForEach(sub, subsenses) {
-                    if (out->sense_count >= 8 || sub_count >= 2) break;
+                    if (group->sense_count >= 8 || sub_count >= 2) break;
 
-                    dict_sense_t *ss = &out->senses[out->sense_count];
+                    dict_sense_t *ss = &group->senses[group->sense_count];
                     memset(ss, 0, sizeof(*ss));
-
-                    if (ipa_set) {
-                        memcpy(ss->ipa, ipa_buf, sizeof(ss->ipa));
-                    }
-                    snprintf(ss->pos, sizeof(ss->pos), "%s", pos);
 
                     const cJSON *sub_def = cJSON_GetObjectItem(sub, "definition");
                     if (sub_def && sub_def->valuestring) {
@@ -264,15 +271,26 @@ static bool parse_response(const char *json, dict_entry_t *out)
                         }
                     }
 
-                    out->sense_count++;
+                    group->sense_count++;
                     sub_count++;
                 }
             }
         }
+
+        /* Only count this group if it has any content */
+        if (group->sense_count > 0) {
+            out->pos_count++;
+        }
     }
 
     cJSON_Delete(root);
-    return out->sense_count > 0;
+    
+    /* Check if we have any content across all groups */
+    int total_senses = 0;
+    for (int i = 0; i < out->pos_count; i++) {
+        total_senses += out->pos_groups[i].sense_count;
+    }
+    return total_senses > 0;
 }
 
 /* ── Async dispatch to LVGL task ──────────────────────────────────── */

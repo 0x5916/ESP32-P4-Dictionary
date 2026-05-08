@@ -23,40 +23,94 @@ static int dict_casecmp(const char *a, const char *b)
 static const dict_entry_t s_entries[] = {
     {
         .keyword = "hello",
-        .sense_count = 1,
-        .senses = {
+        .pos_count = 1,
+        .pos_groups = {
             {
-                .ipa = "heh-LOH",
-                .pos = "interj.",
-                .definition = "Used to greet someone, answer a phone, or express surprise.",
-                .definition_zh = "",
-                .example = "Hello! How are you?"
+                .pos = "interjection",
+                .pron_count = 1,
+                .pronunciations = {
+                    { .ipa = "/heh-LOH/", .dialect = "US" }
+                },
+                .sense_count = 1,
+                .senses = {
+                    {
+                        .definition = "Used to greet someone, answer a phone, or express surprise.",
+                        .definition_zh = "",
+                        .example = "Hello! How are you?"
+                    }
+                }
             }
         }
     },
     {
         .keyword = "dictionary",
-        .sense_count = 1,
-        .senses = {
+        .pos_count = 2,
+        .pos_groups = {
             {
-                .ipa = "DIK-shuh-ner-ee",
                 .pos = "noun",
-                .definition = "A reference book or resource containing words and their meanings.",
-                .definition_zh = "",
-                .example = "I looked it up in the dictionary."
+                .pron_count = 1,
+                .pronunciations = {
+                    { .ipa = "/DIK-shuh-ner-ee/", .dialect = "US" }
+                },
+                .sense_count = 1,
+                .senses = {
+                    {
+                        .definition = "A reference book or resource containing words and their meanings.",
+                        .definition_zh = "",
+                        .example = "I looked it up in the dictionary."
+                    }
+                }
+            },
+            {
+                .pos = "verb",
+                .pron_count = 1,
+                .pronunciations = {
+                    { .ipa = "/DIK-shuh-ner-ee/", .dialect = "US" }
+                },
+                .sense_count = 1,
+                .senses = {
+                    {
+                        .definition = "To compile or arrange in a dictionary.",
+                        .definition_zh = "",
+                        .example = "They decided to dictionary the new terms."
+                    }
+                }
             }
         }
     },
     {
         .keyword = "offline",
-        .sense_count = 1,
-        .senses = {
+        .pos_count = 2,
+        .pos_groups = {
             {
-                .ipa = "OFF-line",
-                .pos = "adj.",
-                .definition = "Not connected to the internet or a network.",
-                .definition_zh = "",
-                .example = "The device can work offline."
+                .pos = "adjective",
+                .pron_count = 1,
+                .pronunciations = {
+                    { .ipa = "/OFF-line/", .dialect = "US" }
+                },
+                .sense_count = 1,
+                .senses = {
+                    {
+                        .definition = "Not connected to the internet or a network.",
+                        .definition_zh = "",
+                        .example = "The device can work offline."
+                    }
+                }
+            },
+            {
+                .pos = "adverb",
+                .pron_count = 1,
+                .pronunciations = {
+                    { .ipa = "/OFF-line/", .dialect = "US" }
+                },
+                .sense_count = 1,
+                .senses = {
+                    {
+                        .definition = "While not connected to the internet or a network.",
+                        .definition_zh = "",
+                        .example = "I'll work offline today."
+                    }
+                }
             }
         }
     }
