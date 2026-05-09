@@ -126,6 +126,8 @@ void search_ui_bind_textarea(lv_obj_t *textarea)
     /* Store reference for suggestion updates */
     suggest_ta = textarea;
 
+    lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_FOCUSED, NULL);
+    lv_obj_add_event_cb(textarea, textarea_focus_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(textarea, search_ui_textarea_value_changed_cb, LV_EVENT_FOCUSED, NULL);
     lv_obj_add_event_cb(textarea, search_ui_textarea_value_changed_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(textarea, search_ui_textarea_value_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);

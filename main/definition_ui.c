@@ -9,8 +9,107 @@
 
 static const char *TAG = "definition_ui";
 
+#define DEFINITION_UI_SPAN_SEGMENT_SIZE 512
+
 /* Font generated with lv_font_conv: provides `my_ipa_font` */
 extern const lv_font_t my_ipa_font;
+
+static void definition_add_styled_span(lv_obj_t *spangroup, const char *text, lv_color_t color,
+                                       const lv_font_t *font, lv_opa_t opa)
+{
+    if (!spangroup || !text || text[0] == '\0') {
+        return;
+    }
+
+    lv_span_t *span = lv_spangroup_add_span(spangroup);
+    if (!span) {
+        return;
+    }
+
+    lv_span_set_text(span, text);
+
+    lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_text_color(&style, color);
+    lv_style_set_text_font(&style, font);
+    lv_style_set_text_opa(&style, opa);
+    lv_spangroup_set_span_style(spangroup, span, &style);
+}
+
+static void definition_flush_span_segment(lv_obj_t *spangroup, char *segment, size_t *segment_len,
+                                          lv_color_t text_color, lv_color_t dim_color,
+                                          const lv_font_t *font, const lv_font_t *dim_font,
+                                          lv_opa_t text_opa, lv_opa_t dim_opa, bool dimmed)
+{
+    if (!spangroup || !segment || !segment_len || *segment_len == 0) {
+        return;
+    }
+
+    segment[*segment_len] = '\0';
+    definition_add_styled_span(spangroup, segment,
+                               dimmed ? dim_color : text_color,
+                               dimmed ? dim_font : font,
+                               dimmed ? dim_opa : text_opa);
+    *segment_len = 0;
+}
+
+static void definition_add_bracket_spans(lv_obj_t *spangroup, const char *src, lv_color_t text_color,
+                                         lv_color_t dim_color, const lv_font_t *font,
+                                         const lv_font_t *dim_font, lv_opa_t text_opa,
+                                         lv_opa_t dim_opa)
+{
+    if (!spangroup || !src) {
+        return;
+    }
+
+    char segment[DEFINITION_UI_SPAN_SEGMENT_SIZE];
+    size_t segment_len = 0;
+    bool dimmed = false;
+
+    for (size_t i = 0; src[i] != '\0'; ++i) {
+        if (src[i] == '(' && !dimmed) {
+            definition_flush_span_segment(spangroup, segment, &segment_len, text_color,
+                                          dim_color, font, dim_font, text_opa, dim_opa, false);
+            dimmed = true;
+        }
+
+        if (segment_len == sizeof(segment) - 1) {
+            definition_flush_span_segment(spangroup, segment, &segment_len, text_color,
+                                          dim_color, font, dim_font, text_opa, dim_opa, dimmed);
+        }
+
+        segment[segment_len++] = src[i];
+
+        if (src[i] == ')' && dimmed) {
+            definition_flush_span_segment(spangroup, segment, &segment_len, text_color,
+                                          dim_color, font, dim_font, text_opa, dim_opa, true);
+            dimmed = false;
+        }
+    }
+
+    if (segment_len > 0) {
+        definition_flush_span_segment(spangroup, segment, &segment_len, text_color,
+                                      dim_color, font, dim_font, text_opa, dim_opa, dimmed);
+    }
+}
+
+static lv_obj_t *definition_create_spangroup(lv_obj_t *parent, bool grow)
+{
+    lv_obj_t *spangroup = lv_spangroup_create(parent);
+    lv_obj_remove_style_all(spangroup);
+    lv_spangroup_set_mode(spangroup, LV_SPAN_MODE_BREAK);
+    lv_spangroup_set_max_lines(spangroup, -1);
+    lv_obj_clear_flag(spangroup, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (grow) {
+        lv_obj_set_flex_grow(spangroup, 1);
+    }
+    else {
+        lv_obj_set_width(spangroup, lv_pct(100));
+    }
+
+    return spangroup;
+}
 
 static void definition_scroll_event_cb(lv_event_t *e)
 {
@@ -97,7 +196,7 @@ void definition_ui_populate(const dict_entry_t *entry, bool success)
     lv_obj_set_style_pad_row(objects.definition_cont, 4, 0);
     lv_obj_set_style_pad_column(objects.definition_cont, 0, 0);
 
-    /* Add scroll event handler to fix recolor artifacts across line breaks */
+    /* Add scroll event handler to refresh span groups across line breaks */
     lv_obj_add_event_cb(objects.definition_cont, definition_scroll_event_cb, LV_EVENT_SCROLL, NULL);
     lv_obj_add_event_cb(objects.definition_cont, definition_scroll_event_cb, LV_EVENT_SCROLL_END, NULL);
 
@@ -109,10 +208,6 @@ void definition_ui_populate(const dict_entry_t *entry, bool success)
         : lv_palette_darken(LV_PALETTE_GREY, 1);
     lv_color_t zh_color = lv_palette_main(LV_PALETTE_ORANGE);
     lv_color_t pron_label_color = lv_palette_main(LV_PALETTE_TEAL);
-
-    /* Pre-compute hex string for subtle_color (used by dim_brackets recolor).
-     * Hardcoded to avoid lv_color_to_u32() portability issues (ARGB vs RGB). */
-    const char *hex_dim = dark_mode ? "B0B0B0" : "757575";
 
     if (!success || !entry || entry->pos_count == 0) {
         lv_obj_t *lbl = lv_label_create(objects.definition_cont);
@@ -173,22 +268,14 @@ void definition_ui_populate(const dict_entry_t *entry, bool success)
             lv_obj_set_style_text_font(num_lbl, &lv_font_montserrat_20, 0);
             lv_obj_set_style_text_color(num_lbl, text_color, 0);
 
-            /* Definition - show full text with normal brackets (no dimming) */
+            /* Definition - use span groups so bracket dimming survives wrapping */
             if (s->definition[0] != '\0') {
-                lv_obj_t *def_lbl = lv_label_create(row);
-                lv_obj_remove_style_all(def_lbl);
-                char def_buf[1024];
-                definition_ui_dim_brackets(def_buf, sizeof(def_buf), s->definition, hex_dim);
-                lv_label_set_recolor(def_lbl, true);
-                lv_label_set_text(def_lbl, def_buf);
-                lv_label_set_long_mode(def_lbl, LV_LABEL_LONG_WRAP);
-                lv_obj_set_width(def_lbl, LV_PCT(100));
-                lv_obj_set_flex_grow(def_lbl, 1);
-                lv_obj_set_style_text_font(def_lbl, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_color(def_lbl, text_color, 0);
-                lv_obj_clear_flag(def_lbl, LV_OBJ_FLAG_SCROLLABLE);
+                lv_obj_t *def_grp = definition_create_spangroup(row, true);
+                definition_add_bracket_spans(def_grp, s->definition, text_color, subtle_color,
+                                             &lv_font_montserrat_20, &lv_font_montserrat_18,
+                                             LV_OPA_COVER, LV_OPA_70);
                 /* Enable scroll chain to allow proper event handling */
-                lv_obj_add_flag(def_lbl, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+                lv_obj_add_flag(def_grp, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
             }
 
             /* Chinese translation */
@@ -259,50 +346,21 @@ void definition_ui_populate(const dict_entry_t *entry, bool success)
                 }
             }
 
-            /* Example - dimmed, with bracket dimming via recolor */
+            /* Example - dimmed, with bracket dimming via span styles */
             if (s->example[0] != '\0') {
-                lv_obj_t *ex_lbl = lv_label_create(objects.definition_cont);
+                lv_obj_t *ex_grp = definition_create_spangroup(objects.definition_cont, false);
                 char ex_src[260];
                 snprintf(ex_src, sizeof(ex_src), "\"%s\"", s->example);
-                char ex_buf[520];
-                definition_ui_dim_brackets(ex_buf, sizeof(ex_buf), ex_src, hex_dim);
-                lv_label_set_text(ex_lbl, ex_buf);
-                lv_label_set_recolor(ex_lbl, true);
-                lv_obj_set_style_text_font(ex_lbl, &lv_font_montserrat_18, 0);
+                definition_add_bracket_spans(ex_grp, ex_src, subtle_color, subtle_color,
+                                             &lv_font_montserrat_18, &lv_font_montserrat_16,
+                                             LV_OPA_60, LV_OPA_50);
                 /* Dim examples with reduced opacity */
-                lv_obj_set_style_text_opa(ex_lbl, LV_OPA_60, 0);
-                lv_obj_set_style_text_color(ex_lbl, subtle_color, 0);
-                lv_obj_set_width(ex_lbl, lv_pct(100));
-                lv_obj_set_style_margin_left(ex_lbl, 40, 0);
-                lv_obj_set_style_margin_top(ex_lbl, 2, 0);
-                lv_obj_set_style_margin_bottom(ex_lbl, 10, 0);
+                lv_obj_set_style_margin_left(ex_grp, 40, 0);
+                lv_obj_set_style_margin_top(ex_grp, 2, 0);
+                lv_obj_set_style_margin_bottom(ex_grp, 10, 0);
             }
         }
     }
-}
-
-void definition_ui_dim_brackets(char *buf, size_t buf_sz, const char *src, const char *hex_dim)
-{
-    size_t si = 0, di = 0;
-    while (src[si] && di < buf_sz - 1) {
-        if (src[si] == '(') {
-            /* Start dim colour, then include opening bracket as literal text */
-            di += snprintf(buf + di, buf_sz - di, "#%s (", hex_dim);
-            si++;
-            /* Copy until matching ')' (or end) */
-            while (src[si] && src[si] != ')' && di < buf_sz - 1) {
-                buf[di++] = src[si++];
-            }
-            if (src[si] == ')') {
-                /* Close the recolor span after the bracketed content */
-                di += snprintf(buf + di, buf_sz - di, ")#");
-                si++;
-            }
-        } else {
-            buf[di++] = src[si++];
-        }
-    }
-    buf[di] = '\0';
 }
 
 void definition_ui_add_pos_ipa_header(const dict_pos_group_t *group, lv_color_t text_color,
