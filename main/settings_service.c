@@ -23,6 +23,7 @@ static void settings_apply_defaults(app_settings_t *settings)
     settings->show_chinese_definition = true;
     settings->save_history = true;
     settings->dark_mode_enabled = true;
+    settings->show_synonyms_antonyms = true;
     settings->brightness_percent = 100;
     settings->timezone_index = TIMEZONE_INDEX_AUTO;
 }
@@ -47,6 +48,9 @@ static bool *settings_get_bool_field(const char *key)
     }
     if (strcmp(key, SETTINGS_KEY_DARK_MODE) == 0) {
         return &s_cached.dark_mode_enabled;
+    }
+    if (strcmp(key, SETTINGS_KEY_SYNONYMS_ANTONYMS) == 0) {
+        return &s_cached.show_synonyms_antonyms;
     }
 
     return NULL;
@@ -133,6 +137,10 @@ static esp_err_t settings_load_from_nvs(app_settings_t *settings)
         settings_apply_nvs_u8_value(SETTINGS_KEY_TIMEZONE, value);
         ESP_LOGD(TAG, "[NVS] timezone=%u", value);
     }
+    if (nvs_get_u8(handle, SETTINGS_KEY_SYNONYMS_ANTONYMS, &value) == ESP_OK) {
+        settings_apply_nvs_value(SETTINGS_KEY_SYNONYMS_ANTONYMS, value);
+        ESP_LOGD(TAG, "[NVS] show_synonyms_antonyms=%u", value);
+    }
 
     nvs_close(handle);
     ESP_LOGI(TAG, "[NVS] Settings loaded from NVS successfully");
@@ -182,6 +190,9 @@ static esp_err_t settings_save_to_nvs(const app_settings_t *settings)
     }
     if (err == ESP_OK) {
         ESP_LOGD(TAG, "[NVS] Set timezone=%u", settings->timezone_index);
+        err = nvs_set_u8(handle, SETTINGS_KEY_SYNONYMS_ANTONYMS, settings->show_synonyms_antonyms ? 1 : 0);
+    }
+    if (err == ESP_OK) {
         err = nvs_commit(handle);
     }
     
@@ -250,15 +261,17 @@ esp_err_t settings_init(void)
     ESP_LOGI(TAG, "[INIT] settings_init()");
     
     settings_apply_defaults(&s_cached);
-    ESP_LOGD(TAG, "[INIT] Defaults applied - dark_mode=%u, brightness=%u, show_zh=%u", 
-             s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition);
+    ESP_LOGD(TAG, "[INIT] Defaults applied - dark_mode=%u, brightness=%u, show_zh=%u, show_synonyms_antonyms=%u", 
+             s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition, 
+             s_cached.show_synonyms_antonyms);
     
     esp_err_t err = settings_load_from_nvs(&s_cached);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "[INIT] NVS load failed: %s, using defaults", esp_err_to_name(err));
     } else {
-        ESP_LOGI(TAG, "[INIT] Settings loaded from NVS - dark_mode=%u, brightness=%u, show_zh=%u",
-                 s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition);
+        ESP_LOGI(TAG, "[INIT] Settings loaded from NVS - dark_mode=%u, brightness=%u, show_zh=%u, show_synonyms_antonyms=%u",
+                 s_cached.dark_mode_enabled, s_cached.brightness_percent, s_cached.show_chinese_definition,
+                 s_cached.show_synonyms_antonyms);
     }
     
     s_initialized = true;

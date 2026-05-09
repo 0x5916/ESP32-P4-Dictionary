@@ -483,63 +483,7 @@ static void definition_populate(const dict_entry_t *entry, bool success)
         const dict_pos_group_t *group = &entry->pos_groups[g];
         if (group->sense_count == 0) continue;
 
-        /* ── PoS header row (label + pronunciations) ────────────────────── */
-        lv_obj_t *pos_row = lv_obj_create(objects.definition_cont);
-        lv_obj_remove_style_all(pos_row);
-        lv_obj_set_size(pos_row, lv_pct(100), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(pos_row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(pos_row, LV_FLEX_ALIGN_START,
-                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-        lv_obj_set_style_pad_column(pos_row, 10, 0);
-        lv_obj_set_style_margin_top(pos_row, 16, 0);
-
-        /* PoS label: entire label dimmed, e.g. "(transitive)" */
-        if (group->pos[0] != '\0') {
-            lv_obj_t *pos_hdr = lv_label_create(pos_row);
-            char pos_buf[64];
-            snprintf(pos_buf, sizeof(pos_buf), "(%s)", group->pos);
-            lv_label_set_text(pos_hdr, pos_buf);
-            lv_obj_set_style_text_font(pos_hdr, &lv_font_montserrat_18, 0);
-            lv_obj_set_style_text_color(pos_hdr, subtle_color, 0);
-            lv_obj_set_style_text_opa(pos_hdr, LV_OPA_40, 0);
-        }
-
-        /* Pronunciations for this PoS */
-        for (uint8_t p = 0; p < group->pron_count; ++p) {
-            const dict_pronunciation_t *pron = &group->pronunciations[p];
-            if (pron->ipa[0] == '\0') continue;
-
-            ESP_LOGI(TAG, "Pronunciation [%s]: '%s'", pron->dialect, pron->ipa);
-
-            /* Row: dialect label + IPA text */
-            lv_obj_t *pron_subrow = lv_obj_create(pos_row);
-            lv_obj_remove_style_all(pron_subrow);
-            lv_obj_set_size(pron_subrow, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-            lv_obj_set_flex_flow(pron_subrow, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(pron_subrow, LV_FLEX_ALIGN_START,
-                                  LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-            lv_obj_set_style_pad_column(pron_subrow, 6, 0);
-
-            /* Dialect label (US / UK) - dimmed like PoS */
-            if (pron->dialect[0] != '\0') {
-                lv_obj_t *dlbl = lv_label_create(pron_subrow);
-                char dbuf[16];
-                snprintf(dbuf, sizeof(dbuf), "(%s)", pron->dialect);
-                lv_label_set_text(dlbl, dbuf);
-                lv_obj_set_style_text_font(dlbl, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(dlbl, pron_label_color, 0);
-                lv_obj_set_style_text_opa(dlbl, LV_OPA_40, 0);
-            }
-
-            /* IPA text - dimmed to reduce visual noise */
-            lv_obj_t *ipa_lbl = lv_label_create(pron_subrow);
-            lv_label_set_text(ipa_lbl, pron->ipa);
-            lv_obj_set_style_text_font(ipa_lbl, &my_ipa_font, 0);
-            lv_obj_set_style_text_color(ipa_lbl, subtle_color, 0);
-            lv_obj_set_style_text_opa(ipa_lbl, LV_OPA_60, 0);
-        }
-
-        /* ── Separator after PoS header ─────────────────────────────────── */
+        /* ── Separator ────────────────────────────────────────────────── */
         lv_obj_t *sep = lv_obj_create(objects.definition_cont);
         lv_obj_remove_style_all(sep);
         lv_obj_set_size(sep, lv_pct(100), 1);
@@ -571,14 +515,11 @@ static void definition_populate(const dict_entry_t *entry, bool success)
             lv_obj_set_style_text_font(num_lbl, &lv_font_montserrat_20, 0);
             lv_obj_set_style_text_color(num_lbl, text_color, 0);
 
-            /* Definition - show full text with recolor tags for brackets */
+            /* Definition - show full text with normal brackets (no dimming) */
             if (s->definition[0] != '\0') {
                 lv_obj_t *def_lbl = lv_label_create(row);
                 lv_obj_remove_style_all(def_lbl);
-                char def_buf[1024];  /* Increased buffer for recolor tags */
-                dim_brackets(def_buf, sizeof(def_buf), s->definition, hex_dim);
-                lv_label_set_text(def_lbl, def_buf);
-                lv_label_set_recolor(def_lbl, true);
+                lv_label_set_text(def_lbl, s->definition);
                 lv_label_set_long_mode(def_lbl, LV_LABEL_LONG_WRAP);
                 lv_obj_set_width(def_lbl, LV_PCT(100));
                 lv_obj_set_flex_grow(def_lbl, 1);
@@ -598,6 +539,63 @@ static void definition_populate(const dict_entry_t *entry, bool success)
                 lv_obj_set_width(zh_lbl, lv_pct(100));
                 lv_obj_set_style_margin_left(zh_lbl, 40, 0);
                 lv_obj_set_style_margin_top(zh_lbl, 2, 0);
+            }
+
+            /* Synonyms and Antonyms */
+            bool show_synonyms_antonyms = true;
+            settings_get_bool(SETTINGS_KEY_SYNONYMS_ANTONYMS, true, &show_synonyms_antonyms);
+            
+            if (show_synonyms_antonyms && (s->synonyms[0] != '\0' || s->antonyms[0] != '\0')) {
+                lv_obj_t *syn_ant_row = lv_obj_create(objects.definition_cont);
+                lv_obj_remove_style_all(syn_ant_row);
+                lv_obj_set_size(syn_ant_row, lv_pct(100), LV_SIZE_CONTENT);
+                lv_obj_set_flex_flow(syn_ant_row, LV_FLEX_FLOW_ROW);
+                lv_obj_set_flex_align(syn_ant_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+                lv_obj_set_style_pad_column(syn_ant_row, 10, 0);
+                lv_obj_set_style_margin_left(syn_ant_row, 40, 0);
+                lv_obj_set_style_margin_top(syn_ant_row, 4, 0);
+                lv_obj_set_style_margin_bottom(syn_ant_row, 8, 0);
+                
+                if (s->synonyms[0] != '\0') {
+                    lv_obj_t *syn_col = lv_obj_create(syn_ant_row);
+                    lv_obj_remove_style_all(syn_col);
+                    lv_obj_set_size(syn_col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_flex_flow(syn_col, LV_FLEX_FLOW_COLUMN);
+                    lv_obj_set_flex_align(syn_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+                    lv_obj_set_style_pad_row(syn_col, 2, 0);
+                    
+                    lv_obj_t *syn_title = lv_label_create(syn_col);
+                    lv_label_set_text(syn_title, "Synonyms:");
+                    lv_obj_set_style_text_font(syn_title, &lv_font_montserrat_18, 0);
+                    lv_obj_set_style_text_color(syn_title, lv_palette_lighten(LV_PALETTE_BLUE, 2), 0);
+                    
+                    lv_obj_t *syn_item = lv_label_create(syn_col);
+                    lv_label_set_text(syn_item, s->synonyms);
+                    lv_obj_set_style_text_font(syn_item, &lv_font_montserrat_18, 0);
+                    lv_obj_set_style_text_color(syn_item, subtle_color, 0);
+                    lv_obj_set_style_margin_top(syn_item, 2, 0);
+                }
+                
+                if (s->antonyms[0] != '\0') {
+                    lv_obj_t *ant_col = lv_obj_create(syn_ant_row);
+                    lv_obj_remove_style_all(ant_col);
+                    lv_obj_set_size(ant_col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_flex_flow(ant_col, LV_FLEX_FLOW_COLUMN);
+                    lv_obj_set_flex_align(ant_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+                    lv_obj_set_style_pad_row(ant_col, 2, 0);
+                    lv_obj_set_style_margin_left(ant_col, 20, 0);
+                    
+                    lv_obj_t *ant_title = lv_label_create(ant_col);
+                    lv_label_set_text(ant_title, "Antonyms:");
+                    lv_obj_set_style_text_font(ant_title, &lv_font_montserrat_18, 0);
+                    lv_obj_set_style_text_color(ant_title, lv_palette_lighten(LV_PALETTE_RED, 2), 0);
+                    
+                    lv_obj_t *ant_item = lv_label_create(ant_col);
+                    lv_label_set_text(ant_item, s->antonyms);
+                    lv_obj_set_style_text_font(ant_item, &lv_font_montserrat_18, 0);
+                    lv_obj_set_style_text_color(ant_item, subtle_color, 0);
+                    lv_obj_set_style_margin_top(ant_item, 2, 0);
+                }
             }
 
             /* Example - dimmed, with bracket dimming via recolor */

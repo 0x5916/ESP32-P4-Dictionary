@@ -11,6 +11,7 @@ typedef struct
     bool show_chinese_definition;
     bool save_history;
     bool dark_mode_enabled;
+    bool show_synonyms_antonyms;
     uint8_t brightness_percent;
     uint8_t timezone_index;
 } app_settings_t;
@@ -22,6 +23,7 @@ typedef struct
 #define SETTINGS_KEY_FALLBACK "fallback_en"
 #define SETTINGS_KEY_HISTORY "history"
 #define SETTINGS_KEY_TIMEZONE "timezone"
+#define SETTINGS_KEY_SYNONYMS_ANTONYMS "syn_ant"
 
 esp_err_t settings_init(void);
 esp_err_t settings_load(app_settings_t *out);

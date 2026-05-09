@@ -28,6 +28,8 @@ typedef struct {
     char definition[512];
     char definition_zh[256];
     char example[256];
+    char synonyms[256];
+    char antonyms[256];
 } dict_sense_t;
 
 typedef struct {

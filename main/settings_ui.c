@@ -330,6 +330,18 @@ static void settings_show_zh_cb(lv_event_t *event)
     lv_async_call(settings_rebuild_async, objects.settings_cont);
 }
 
+static void settings_synonyms_antonyms_cb(lv_event_t *event)
+{
+    if (!ui_event_is(event, LV_EVENT_VALUE_CHANGED)) {
+        return;
+    }
+
+    lv_obj_t *sw = lv_event_get_target(event);
+    bool enabled = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    settings_set_bool(SETTINGS_KEY_SYNONYMS_ANTONYMS, enabled);
+    lv_async_call(settings_rebuild_async, objects.settings_cont);
+}
+
 static void settings_timezone_detect_async(void *user_data)
 {
     (void)user_data;
@@ -435,6 +447,15 @@ void settings_ui_build(lv_obj_t *parent) {
                                "Display bilingual meanings when available",
                                show_zh,
                                settings_show_zh_cb,
+                               NULL);
+
+    bool show_synonyms_antonyms = true;
+    settings_get_bool(SETTINGS_KEY_SYNONYMS_ANTONYMS, true, &show_synonyms_antonyms);
+    settings_create_switch_row(parent,
+                               "Show synonyms & antonyms",
+                               "Display related words when available",
+                               show_synonyms_antonyms,
+                               settings_synonyms_antonyms_cb,
                                NULL);
 
     // settings_create_dropdown_row(parent,

@@ -191,6 +191,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
             const cJSON *def = cJSON_GetObjectItem(sense, "definition");
             if (def && def->valuestring) {
                 strncpy(s->definition, def->valuestring, sizeof(s->definition) - 1);
+                s->definition[sizeof(s->definition) - 1] = '\0';
             }
 
             /* examples — take first */
@@ -199,6 +200,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
                 const cJSON *ex = cJSON_GetArrayItem(examples, 0);
                 if (ex && ex->valuestring) {
                     strncpy(s->example, ex->valuestring, sizeof(s->example) - 1);
+                    s->example[sizeof(s->example) - 1] = '\0';
                 }
             }
 
@@ -216,11 +218,56 @@ static bool parse_response(const char *json, dict_entry_t *out)
                             if (tr_word && tr_word->valuestring) {
                                 strncpy(s->definition_zh, tr_word->valuestring,
                                         sizeof(s->definition_zh) - 1);
+                                s->definition_zh[sizeof(s->definition_zh) - 1] = '\0';
                                 break;
                             }
                         }
                     }
                 }
+            }
+
+            /* synonyms */
+            const cJSON *synonyms = cJSON_GetObjectItem(sense, "synonyms");
+            if (synonyms && cJSON_IsArray(synonyms)) {
+                char synonym_list[256] = "";
+                int first = 1;
+                cJSON *syn;
+                cJSON_ArrayForEach(syn, synonyms) {
+                    if (syn->valuestring) {
+                        if (!first) {
+                            strncat(synonym_list, ", ", sizeof(synonym_list) - strlen(synonym_list) - 1);
+                        }
+                        strncat(synonym_list, syn->valuestring, sizeof(synonym_list) - strlen(synonym_list) - 1);
+                        first = 0;
+                    }
+                }
+                /* Ensure null termination before strncpy */
+                synonym_list[sizeof(synonym_list) - 1] = '\0';
+                /* Safe copy: ensure null termination even if source is exactly sizeof-1 */
+                memcpy(s->synonyms, synonym_list, sizeof(s->synonyms) - 1);
+                s->synonyms[sizeof(s->synonyms) - 1] = '\0';
+            }
+
+            /* antonyms */
+            const cJSON *antonyms = cJSON_GetObjectItem(sense, "antonyms");
+            if (antonyms && cJSON_IsArray(antonyms)) {
+                char antonym_list[256] = "";
+                int first = 1;
+                cJSON *ant;
+                cJSON_ArrayForEach(ant, antonyms) {
+                    if (ant->valuestring) {
+                        if (!first) {
+                            strncat(antonym_list, ", ", sizeof(antonym_list) - strlen(antonym_list) - 1);
+                        }
+                        strncat(antonym_list, ant->valuestring, sizeof(antonym_list) - strlen(antonym_list) - 1);
+                        first = 0;
+                    }
+                }
+                /* Ensure null termination before strncpy */
+                antonym_list[sizeof(antonym_list) - 1] = '\0';
+                /* Safe copy: ensure null termination even if source is exactly sizeof-1 */
+                memcpy(s->antonyms, antonym_list, sizeof(s->antonyms) - 1);
+                s->antonyms[sizeof(s->antonyms) - 1] = '\0';
             }
 
             group->sense_count++;
@@ -240,6 +287,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
                     if (sub_def && sub_def->valuestring) {
                         strncpy(ss->definition, sub_def->valuestring,
                                 sizeof(ss->definition) - 1);
+                        ss->definition[sizeof(ss->definition) - 1] = '\0';
                     }
 
                     const cJSON *sub_examples = cJSON_GetObjectItem(sub, "examples");
@@ -248,6 +296,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
                         if (ex && ex->valuestring) {
                             strncpy(ss->example, ex->valuestring,
                                     sizeof(ss->example) - 1);
+                            ss->example[sizeof(ss->example) - 1] = '\0';
                         }
                     }
 
@@ -264,6 +313,7 @@ static bool parse_response(const char *json, dict_entry_t *out)
                                     if (tr_word && tr_word->valuestring) {
                                         strncpy(ss->definition_zh, tr_word->valuestring,
                                                 sizeof(ss->definition_zh) - 1);
+                                        ss->definition_zh[sizeof(ss->definition_zh) - 1] = '\0';
                                         break;
                                     }
                                 }
