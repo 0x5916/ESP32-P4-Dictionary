@@ -1,5 +1,7 @@
 #include "esp_log.h"
 #include "esp_memory_utils.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "ui/ui.h"
@@ -21,6 +23,21 @@ esp_err_t custom_nvs_flash_init(void) {
         nvs_flash_init();
     }
     return ret;
+}
+
+// Background task to load spellcheck wordlist from SD card
+// Runs on CPU 1 to avoid blocking LVGL/display on CPU 0
+static void spellcheck_loader_task(void *pvParam)
+{
+    (void)pvParam;
+    ESP_LOGD(TAG, "[TASK] Spellcheck loader task starting");
+    esp_err_t sc_err = dict_spellcheck_init();
+    if (sc_err == ESP_OK) {
+        ESP_LOGI(TAG, "[TASK] Spellcheck engine initialized successfully");
+    } else {
+        ESP_LOGW(TAG, "[TASK] Spellcheck engine failed: %s", esp_err_to_name(sc_err));
+    }
+    vTaskDelete(NULL);
 }
 
 void app_main(void)
@@ -53,15 +70,7 @@ void app_main(void)
 
     ESP_LOGD(TAG, "[INIT] Starting display");
     bsp_display_cfg_t cfg = {
-        .lv_adapter_cfg = {
-            .task_stack_size = ESP_LV_ADAPTER_DEFAULT_STACK_SIZE,
-            .task_priority = ESP_LV_ADAPTER_DEFAULT_TASK_PRIORITY,
-            .task_core_id = ESP_LV_ADAPTER_DEFAULT_TASK_CORE_ID,
-            .tick_period_ms = ESP_LV_ADAPTER_DEFAULT_TICK_PERIOD_MS,
-            .task_min_delay_ms = 1,
-            .task_max_delay_ms = 33,
-            .stack_in_psram = false,
-        },
+        .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
         .rotation = ESP_LV_ADAPTER_ROTATE_0,
         .tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_PARTIAL,
         .touch_flags = {
@@ -84,13 +93,16 @@ void app_main(void)
     bsp_display_unlock();
     ESP_LOGI(TAG, "[INIT] UI initialized");
 
-    ESP_LOGD(TAG, "[INIT] Initializing spellcheck engine");
-    esp_err_t sc_err = dict_spellcheck_init();
-    if (sc_err == ESP_OK) {
-        ESP_LOGI(TAG, "[INIT] Spellcheck engine initialized");
-    } else {
-        ESP_LOGW(TAG, "[INIT] Spellcheck engine failed to initialize: %s (suggestions disabled)", esp_err_to_name(sc_err));
-    }
-
-    ESP_LOGI(TAG, "[INIT] Initialization complete");
+    ESP_LOGI(TAG, "[INIT] Initialization complete - spellcheck will load in background");
+    
+    // Launch spellcheck loader as background task (won't block main task)
+    xTaskCreatePinnedToCore(
+        spellcheck_loader_task,
+        "spellcheck_loader",
+        8192,
+        NULL,
+        tskIDLE_PRIORITY + 1,
+        NULL,
+        1  // CPU 1 core to avoid blocking CPU 0 (LVGL/display)
+    );
 }

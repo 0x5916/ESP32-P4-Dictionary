@@ -9,6 +9,8 @@
 #include "settings_service.h"
 #include "clock_service.h"
 #include "geolocation_service.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -24,12 +26,40 @@ static wifi_state_t s_state               = WIFI_STATE_DISABLED;
 static bool         s_initialized         = false;
 static bool         s_has_credentials     = false;
 static bool         s_auto_reconnect      = false;
+static bool         s_geolocation_started = false;
 static char         s_connected_ssid[33]   = {0};
 static char         s_saved_ssid[33]       = {0};
 static char         s_saved_password[65]    = {0};
 
 static wifi_scan_done_cb_t    s_scan_done_cb    = NULL;
 static wifi_state_changed_cb_t s_state_changed_cb = NULL;
+
+// ---- Background task for geolocation ----
+static void geolocation_task(void *pvParam)
+{
+    (void)pvParam;
+    ESP_LOGD(TAG, "[TASK] Geolocation detection task starting");
+    geolocation_service_detect_timezone();
+    vTaskDelete(NULL);
+}
+
+static void wifi_service_request_geolocation(void)
+{
+    if (s_geolocation_started) {
+        return;
+    }
+
+    s_geolocation_started = true;
+    xTaskCreatePinnedToCore(
+        geolocation_task,
+        "geolocation",
+        8192,
+        NULL,
+        tskIDLE_PRIORITY + 1,
+        NULL,
+        1
+    );
+}
 
 // ---- Helpers ----
 
@@ -40,12 +70,11 @@ static void set_state(wifi_state_t new_state, const char *ssid)
     // Start time sync when connected, stop when disconnected
     if (new_state == WIFI_STATE_CONNECTED) {
         clock_service_start_sntp();
-        // Detect timezone from IP geolocation (if in AUTO mode)
-        geolocation_service_detect_timezone();
     } else if (new_state == WIFI_STATE_DISCONNECTED || 
                new_state == WIFI_STATE_DISABLED ||
                new_state == WIFI_STATE_CONNECT_FAILED) {
         clock_service_stop_sntp();
+        s_geolocation_started = false;
     }
     
     if (s_state_changed_cb) {
@@ -259,6 +288,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             ip_event_got_ip_t *evt = (ip_event_got_ip_t *)event_data;
             ESP_LOGI(TAG, "[EVT] GOT_IP " IPSTR, IP2STR(&evt->ip_info.ip));
             set_state(WIFI_STATE_CONNECTED, s_connected_ssid);
+            wifi_service_request_geolocation();
         }
     }
 }

@@ -646,10 +646,10 @@ static lv_display_t *bsp_display_lcd_init(const bsp_display_cfg_t *cfg)
             .rotation = cfg->rotation,
             .hor_res = BSP_LCD_H_RES,
             .ver_res = BSP_LCD_V_RES,
-            .buffer_height = 50,
+            .buffer_height = 120,
             .use_psram = false,
-            .enable_ppa_accel = false,
-            .require_double_buffer = false,
+            .enable_ppa_accel = true,
+            .require_double_buffer = true,
         },
         .tear_avoid_mode = cfg->tear_avoid_mode,
     };

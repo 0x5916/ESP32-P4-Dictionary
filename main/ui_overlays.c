@@ -409,8 +409,8 @@ static void dim_brackets(char *buf, size_t buf_sz, const char *src, const char *
                 buf[di++] = src[si++];
             }
             if (src[si] == ')') {
-                /* Close bracket as literal text, then reset colour */
-                di += snprintf(buf + di, buf_sz - di, ") #");
+                /* Close the recolor span after the bracketed content */
+                di += snprintf(buf + di, buf_sz - di, ")#");
                 si++;
             }
         } else {
@@ -418,6 +418,55 @@ static void dim_brackets(char *buf, size_t buf_sz, const char *src, const char *
         }
     }
     buf[di] = '\0';
+}
+
+static void definition_add_pos_ipa_header(const dict_pos_group_t *group, lv_color_t text_color,
+                                          lv_color_t pron_label_color)
+{
+    if (!group || !objects.definition_cont || group->pos[0] == '\0') {
+        return;
+    }
+
+    lv_obj_t *header = lv_obj_create(objects.definition_cont);
+    lv_obj_remove_style_all(header);
+    lv_obj_set_size(header, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(header, 8, 0);
+    lv_obj_set_style_margin_left(header, 8, 0);
+    lv_obj_set_style_margin_top(header, 6, 0);
+    lv_obj_set_style_margin_bottom(header, 2, 0);
+
+    lv_obj_t *pos_lbl = lv_label_create(header);
+    lv_label_set_text(pos_lbl, group->pos);
+    lv_obj_set_style_text_font(pos_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(pos_lbl, text_color, 0);
+
+    if (group->pron_count > 0) {
+        lv_obj_t *ipa_title = lv_label_create(header);
+        lv_label_set_text(ipa_title, "IPA:");
+        lv_obj_set_style_text_font(ipa_title, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(ipa_title, pron_label_color, 0);
+
+        for (uint8_t i = 0; i < group->pron_count; ++i) {
+            const dict_pronunciation_t *pr = &group->pronunciations[i];
+            if (pr->ipa[0] == '\0') {
+                continue;
+            }
+
+            lv_obj_t *ipa_lbl = lv_label_create(header);
+            lv_label_set_text(ipa_lbl, pr->ipa);
+            lv_obj_set_style_text_font(ipa_lbl, &my_ipa_font, 0);
+            lv_obj_set_style_text_color(ipa_lbl, text_color, 0);
+
+            if (pr->dialect[0] != '\0') {
+                lv_obj_t *dialect_lbl = lv_label_create(header);
+                lv_label_set_text_fmt(dialect_lbl, "(%s)", pr->dialect);
+                lv_obj_set_style_text_font(dialect_lbl, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(dialect_lbl, pron_label_color, 0);
+            }
+        }
+    }
 }
 
 static void definition_populate(const dict_entry_t *entry, bool success)
@@ -483,6 +532,8 @@ static void definition_populate(const dict_entry_t *entry, bool success)
         const dict_pos_group_t *group = &entry->pos_groups[g];
         if (group->sense_count == 0) continue;
 
+        definition_add_pos_ipa_header(group, text_color, pron_label_color);
+
         /* ── Separator ────────────────────────────────────────────────── */
         lv_obj_t *sep = lv_obj_create(objects.definition_cont);
         lv_obj_remove_style_all(sep);
@@ -519,7 +570,10 @@ static void definition_populate(const dict_entry_t *entry, bool success)
             if (s->definition[0] != '\0') {
                 lv_obj_t *def_lbl = lv_label_create(row);
                 lv_obj_remove_style_all(def_lbl);
-                lv_label_set_text(def_lbl, s->definition);
+                char def_buf[1024];
+                dim_brackets(def_buf, sizeof(def_buf), s->definition, hex_dim);
+                lv_label_set_recolor(def_lbl, true);
+                lv_label_set_text(def_lbl, def_buf);
                 lv_label_set_long_mode(def_lbl, LV_LABEL_LONG_WRAP);
                 lv_obj_set_width(def_lbl, LV_PCT(100));
                 lv_obj_set_flex_grow(def_lbl, 1);

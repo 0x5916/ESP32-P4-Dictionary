@@ -82,17 +82,16 @@ esp_err_t geolocation_service_detect_timezone(void)
     ESP_LOGI(TAG, "[GEO] Check timezone: current_tz=%u (err=%s)", current_tz, esp_err_to_name(err));
     
     if (current_tz != TIMEZONE_INDEX_AUTO) {
-        ESP_LOGI(TAG, "[GEO] Timezone is manually set to %u, skipping auto-detection", current_tz);
+        ESP_LOGD(TAG, "[GEO] Timezone is manually set to %u, skipping auto-detection", current_tz);
         return ESP_OK;
     }
 
     if (s_detecting) {
-        ESP_LOGI(TAG, "[GEO] Detection already in progress");
         return ESP_OK;
     }
 
     s_detecting = true;
-    ESP_LOGI(TAG, "[GEO] Starting IP-based timezone detection from ip-api.com");
+    ESP_LOGD(TAG, "[GEO] Starting timezone detection");
 
     http_response_t http_resp = {0};
     
@@ -104,7 +103,7 @@ esp_err_t geolocation_service_detect_timezone(void)
         .transport_type = HTTP_TRANSPORT_OVER_TCP,
     };
 
-    ESP_LOGI(TAG, "[GEO] HTTP client config: url=%s, timeout=%d ms", GEOLOCATION_API_URL, config.timeout_ms);
+    ESP_LOGD(TAG, "[GEO] HTTP client config: url=%s, timeout=%d ms", GEOLOCATION_API_URL, config.timeout_ms);
     
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -113,7 +112,7 @@ esp_err_t geolocation_service_detect_timezone(void)
         return ESP_FAIL;
     }
     
-    ESP_LOGI(TAG, "[GEO] HTTP client initialized, performing request...");
+    ESP_LOGD(TAG, "[GEO] HTTP client initialized, performing request...");
 
     err = esp_http_client_perform(client);
     if (err != ESP_OK) {
@@ -124,7 +123,7 @@ esp_err_t geolocation_service_detect_timezone(void)
     }
 
     int status_code = esp_http_client_get_status_code(client);
-    ESP_LOGI(TAG, "[GEO] HTTP response received: status=%d, bytes=%d", status_code, http_resp.response_len);
+    ESP_LOGD(TAG, "[GEO] HTTP response received: status=%d, bytes=%d", status_code, http_resp.response_len);
     
     if (status_code != 200) {
         ESP_LOGW(TAG, "[GEO] HTTP status code: %d", status_code);
@@ -140,14 +139,14 @@ esp_err_t geolocation_service_detect_timezone(void)
         http_resp.response_data[http_resp.response_len] = '\0';
     }
     
-    ESP_LOGI(TAG, "[GEO] Response data: %s", http_resp.response_data);
+    ESP_LOGD(TAG, "[GEO] Response data: %s", http_resp.response_data);
 
     // Parse response and get timezone
     uint8_t tz_index = parse_geolocation_response(http_resp.response_data);
-    ESP_LOGI(TAG, "[GEO] Parsed timezone index: %u", tz_index);
+    ESP_LOGD(TAG, "[GEO] Parsed timezone index: %u", tz_index);
 
     s_detected_timezone_index = tz_index;
-    ESP_LOGI(TAG, "[GEO] Timezone cached for AUTO mode: index=%u", tz_index);
+    ESP_LOGD(TAG, "[GEO] Timezone cached for AUTO mode: index=%u", tz_index);
     clock_service_notify_time_synced();
 
     s_detecting = false;
