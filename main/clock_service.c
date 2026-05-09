@@ -1,5 +1,5 @@
 #include "clock_service.h"
-#include "ui_overlays.h"
+#include "status_bar.h"
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
@@ -48,7 +48,7 @@ static void clock_update_label(void) {
     }
 
     bsp_display_lock(-1);
-    ui_overlays_set_time_text(buf);
+    status_bar_set_time_text(buf);
     bsp_display_unlock();
 }
 

@@ -3,7 +3,7 @@
 #include "wifi_service.h"
 #include "ui/screens.h"
 #include "ui_helpers.h"
-#include "ui_overlays.h"
+#include "status_bar.h"
 #include "bsp/esp-bsp.h"
 #include "screen_manager.h"
 #include "esp_log.h"
@@ -353,7 +353,7 @@ static void wifi_ui_update_status_bar(wifi_state_t state, const char *ssid)
             snprintf(buf, sizeof(buf), "WiFi: --");
             break;
     }
-    ui_overlays_set_wifi_text(buf);
+    status_bar_set_wifi_text(buf);
 }
 
 // ============================================================

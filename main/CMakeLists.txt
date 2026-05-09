@@ -21,6 +21,11 @@ idf_component_register(
         ui/images.c
         ui/screens.c
         my_ipa_font.c
+        status_bar.c
+        keyboard.c
+        search_ui.c
+        definition_ui.c
+        navigation.c
     INCLUDE_DIRS . "ui"
 )
 

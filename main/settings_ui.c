@@ -7,7 +7,7 @@
 #include "geolocation_service.h"
 #include "timezone_data.h"
 #include "clock_service.h"
-#include "ui_overlays.h"
+#include "status_bar.h"
 #include "ui/ui.h"
 #include "ui_helpers.h"
 #include "esp_log.h"
@@ -288,7 +288,7 @@ static void settings_dark_mode_cb(lv_event_t *event)
     settings_set_bool(SETTINGS_KEY_DARK_MODE, enabled);
     ESP_LOGD(TAG, "[UI] Applying dark mode theme");
     settings_ui_apply_theme(enabled);
-    ui_overlays_apply_theme(enabled);
+    status_bar_apply_theme(enabled);
     lv_async_call(settings_rebuild_async, objects.settings_cont);
 }
 
