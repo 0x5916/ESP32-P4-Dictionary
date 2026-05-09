@@ -16,6 +16,52 @@ static uint8_t  *s_wordlist_buf   = NULL;   /* PSRAM buffer holding all records 
 static uint32_t  s_record_count   = 0;      /* Number of records in the buffer */
 static bool      s_initialized    = false;
 
+/* ── QWERTY keyboard layout optimization ──────────────────────────── */
+static const char *qwert_neighbors[26][5] = {
+    /* a */ {"q", "s", "z"},
+    /* b */ {"v", "g", "h"},
+    /* c */ {"x", "d", "f"},
+    /* d */ {"s", "e", "f", "c"},
+    /* e */ {"w", "r", "d"},
+    /* f */ {"d", "r", "g", "c", "v"},
+    /* g */ {"f", "t", "h", "b"},
+    /* h */ {"g", "j", "b", "n"},
+    /* i */ {"u", "o", "j"},
+    /* j */ {"h", "k", "m", "i", "n"},
+    /* k */ {"j", "l", "m"},
+    /* l */ {"k", "p", ";"},
+    /* m */ {"n", "j", "k"},
+    /* n */ {"h", "j", "b", "m"},
+    /* o */ {"i", "p", "l"},
+    /* p */ {"o", "l", ";"},
+    /* q */ {"w", "a"},
+    /* r */ {"e", "t", "f"},
+    /* s */ {"a", "w", "e", "d", "z"},
+    /* t */ {"r", "y", "g"},
+    /* u */ {"y", "i", "j"},
+    /* v */ {"c", "f", "g", "b"},
+    /* w */ {"q", "s", "e"},
+    /* x */ {"z", "s", "c"},
+    /* y */ {"t", "u", "h"},
+    /* z */ {"a", "s", "x"}
+};
+
+static bool are_qwert_neighbors(char a, char b) {
+    a = tolower((unsigned char)a);
+    b = tolower((unsigned char)b);
+    
+    if (a < 'a' || a > 'z' || b < 'a' || b > 'z') {
+        return false;
+    }
+    
+    for (int i = 0; i < 5; i++) {
+        if (qwert_neighbors[a - 'a'][i] && qwert_neighbors[a - 'a'][i][0] == b) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* ── Record accessor helpers ──────────────────────────────────────── */
 /* wordlist.bin layout (from parse_wordlist.py):
  *   Header:  uint32_t  record_count   (4 bytes)
@@ -75,7 +121,7 @@ static uint32_t find_lower_bound(const char *prefix, size_t prefix_len)
     return lo;
 }
 
-/* ── Levenshtein distance (limited to MAX_EDIT_DIST) ──────────────── */
+/* ── QWERTY-aware Levenshtein distance (limited to MAX_EDIT_DIST) ──── */
 static int levenshtein_dist(const char *a, uint8_t alen,
                             const char *b, uint8_t blen)
 {
@@ -98,8 +144,20 @@ static int levenshtein_dist(const char *a, uint8_t alen,
         uint8_t min_val = i;
 
         for (uint8_t j = 1; j <= blen; ++j) {
-            uint8_t cost = (tolower((unsigned char)a[i - 1]) !=
-                            tolower((unsigned char)b[j - 1])) ? 1 : 0;
+            /* QWERTY-aware cost calculation */
+            uint8_t cost;
+            char ca = tolower((unsigned char)a[i - 1]);
+            char cb = tolower((unsigned char)b[j - 1]);
+            
+            if (ca == cb) {
+                cost = 0;
+            } else if (are_qwert_neighbors(ca, cb)) {
+                /* Lower cost for adjacent keys on QWERTY keyboard */
+                cost = 1;
+            } else {
+                cost = 2; /* Higher cost for non-adjacent key errors */
+            }
+            
             uint8_t del = prev[j] + 1;
             uint8_t ins = curr[j - 1] + 1;
             uint8_t sub = prev[j - 1] + cost;
@@ -303,17 +361,18 @@ size_t dict_spellcheck_suggest(const char *word,
     /* First try prefix search – if we have matches, return those */
     size_t prefix_count = dict_spellcheck_prefix_search(word, suggestions, max_suggestions);
     if (prefix_count > 0) {
+        ESP_LOGI(TAG, "Prefix search found %zu suggestions for '%s'", prefix_count, word);
         return prefix_count;
     }
 
     /* No prefix match – fall back to edit distance spell correction.
      * Scan a window around where the word would be inserted alphabetically.
-     * Window size: ±128 records should catch most typos. */
+     * Window size: ±512 records to catch most typos, including QWERTY errors. */
     dict_suggestion_t best[MAX_SUGGESTIONS];
     size_t best_count = 0;
 
     uint32_t center = find_lower_bound(word, wlen);
-    int32_t win = 128;
+    int32_t win = 512; /* Increased window size to capture QWERTY errors */
 
     int32_t start_idx = (int32_t)center - win;
     if (start_idx < 0) start_idx = 0;
